@@ -48,13 +48,33 @@ try {
  * @param {Function} onStopPress - Callback when a stop marker is pressed
  */
 export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
+  // ALL hooks must be declared at the top, before any conditional returns
   const [userLocation, setUserLocation] = useState(null);
   const [nearbyStops, setNearbyStops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapInitialized, setMapInitialized] = useState(false);
 
+  // ALL useEffect hooks must be declared before any conditional returns
+  // First useEffect: Initialize map ready state
+  useEffect(() => {
+    // Longer delay to ensure native module is fully initialized
+    const timer = setTimeout(() => {
+      setMapReady(true);
+      // Additional delay before showing markers
+      setTimeout(() => {
+        setMapInitialized(true);
+      }, 500);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Second useEffect: Load location and watch position
   useEffect(() => {
     let isMounted = true;
+    let watchSubscription = null;
 
     const loadData = async () => {
       try {
@@ -67,27 +87,49 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
       }
     };
 
-    loadData();
-    
-    // Watch for location updates
-    const watchCallback = (location) => {
+    // Delay initial load slightly to prevent race conditions
+    const loadTimer = setTimeout(() => {
       if (isMounted) {
-        setUserLocation(location);
-        updateNearbyStops(location);
+        loadData();
+      }
+    }, 100);
+    
+    // Watch for location updates - but only after initial load
+    const watchCallback = (location) => {
+      if (isMounted && location) {
+        // Validate location before setting
+        const lat = parseFloat(location.latitude);
+        const lon = parseFloat(location.longitude);
+        
+        if (!isNaN(lat) && !isNaN(lon) && 
+            lat >= -90 && lat <= 90 && 
+            lon >= -180 && lon <= 180) {
+          setUserLocation(location);
+          updateNearbyStops(location).catch((err) => {
+            console.error('Error updating stops:', err);
+          });
+        } else {
+          console.warn('Invalid location received:', location);
+        }
       }
     };
     
-    locationService.watchPosition(watchCallback, {
-      timeInterval: 30000, // Update every 30 seconds
-      distanceInterval: 50, // Update every 50 meters
-    }).catch((error) => {
-      if (isMounted) {
-        console.error('Error watching position:', error);
-      }
-    });
+    // Start watching after a delay
+    const watchTimer = setTimeout(() => {
+      locationService.watchPosition(watchCallback, {
+        timeInterval: 30000, // Update every 30 seconds
+        distanceInterval: 50, // Update every 50 meters
+      }).catch((error) => {
+        if (isMounted) {
+          console.error('Error watching position:', error);
+        }
+      });
+    }, 500);
 
     return () => {
       isMounted = false;
+      clearTimeout(loadTimer);
+      clearTimeout(watchTimer);
       locationService.stopWatching();
     };
   }, [radiusMeters]);
@@ -132,21 +174,41 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
 
   const updateNearbyStops = async (location) => {
     try {
+      if (!location || !location.latitude || !location.longitude) {
+        console.warn('Invalid location for updateNearbyStops:', location);
+        return;
+      }
+
+      const lat = parseFloat(location.latitude);
+      const lon = parseFloat(location.longitude);
+
+      if (isNaN(lat) || isNaN(lon)) {
+        console.warn('Location coordinates are not numbers:', lat, lon);
+        return;
+      }
+
       // Ensure GTFS is loaded
       await metroService.initialize();
       const allStops = metroService.stops || [];
 
+      if (!allStops || allStops.length === 0) {
+        console.warn('No stops available from GTFS');
+        setNearbyStops([]);
+        return;
+      }
+
       // Find nearby stops
       const stops = locationService.findNearbyStops(
-        location.latitude,
-        location.longitude,
+        lat,
+        lon,
         allStops,
         radiusMeters
       );
 
-      setNearbyStops(stops);
+      setNearbyStops(stops || []);
     } catch (err) {
       console.error('Error finding nearby stops:', err);
+      setNearbyStops([]);
     }
   };
 
@@ -271,27 +333,7 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
 
   const region = getInitialRegion();
 
-  // Don't render map if region is invalid
-  if (!region || isNaN(region.latitude) || isNaN(region.longitude)) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Invalid map region</Text>
-      </View>
-    );
-  }
-
-  // Add a small delay to ensure native module is ready
-  const [mapReady, setMapReady] = useState(false);
-
-  useEffect(() => {
-    // Small delay to ensure native module is initialized
-    const timer = setTimeout(() => {
-      setMapReady(true);
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, []);
-
+  // Now we can do conditional returns (all hooks are declared above)
   if (!mapReady) {
     return (
       <View style={styles.container}>
@@ -301,20 +343,41 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
     );
   }
 
+  // Validate region one more time before rendering
+  if (!region || isNaN(region.latitude) || isNaN(region.longitude) || 
+      region.latitude < -90 || region.latitude > 90 ||
+      region.longitude < -180 || region.longitude > 180) {
+    console.error('Invalid region:', region);
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Invalid map region</Text>
+        <Text style={styles.errorDetails}>
+          Latitude: {region?.latitude}, Longitude: {region?.longitude}
+        </Text>
+      </View>
+    );
+  }
+
   try {
     return (
       <MapView
         style={styles.map}
         initialRegion={region}
-        showsUserLocation={false} // Disable to prevent crashes, we'll show it manually
+        showsUserLocation={false} // Disable to prevent crashes
         showsMyLocationButton={false}
         followsUserLocation={false}
         mapType="standard"
         loadingEnabled={true}
         loadingIndicatorColor="#3B82F6"
         loadingBackgroundColor="#F9FAFB"
+        toolbarEnabled={false}
+        pitchEnabled={false}
+        rotateEnabled={false}
+        scrollEnabled={true}
+        zoomEnabled={true}
         onMapReady={() => {
           console.log('✅ Map loaded successfully');
+          setMapInitialized(true);
         }}
         onError={(error) => {
           console.error('❌ Map error:', error);
@@ -324,24 +387,13 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
           console.log('Map layout completed');
         }}
       >
-      {/* User location marker */}
-      {userLocation && userLocation.latitude && userLocation.longitude && (
+      {/* Only render markers after map is fully initialized and ready */}
+      {mapInitialized && userLocation && 
+       userLocation.latitude && userLocation.longitude &&
+       !isNaN(parseFloat(userLocation.latitude)) && 
+       !isNaN(parseFloat(userLocation.longitude)) && (
         <>
-          {/* User location accuracy circle */}
-          {userLocation.accuracy && userLocation.accuracy > 0 && (
-            <Circle
-              center={{
-                latitude: parseFloat(userLocation.latitude),
-                longitude: parseFloat(userLocation.longitude),
-              }}
-              radius={Math.min(userLocation.accuracy, 1000)} // Cap at 1km
-              strokeColor="#3B82F6"
-              fillColor="rgba(59, 130, 246, 0.1)"
-              strokeWidth={2}
-            />
-          )}
-
-          {/* User location marker */}
+          {/* User location marker - simplified, no circles to reduce complexity */}
           <Marker
             coordinate={{
               latitude: parseFloat(userLocation.latitude),
@@ -349,24 +401,13 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
             }}
             title="Your Location"
             pinColor="#3B82F6"
-          />
-
-          {/* Search radius circle */}
-          <Circle
-            center={{
-              latitude: parseFloat(userLocation.latitude),
-              longitude: parseFloat(userLocation.longitude),
-            }}
-            radius={radiusMeters}
-            strokeColor="#10B981"
-            fillColor="rgba(16, 185, 129, 0.1)"
-            strokeWidth={2}
+            identifier="user-location"
           />
         </>
       )}
 
-      {/* Nearby stops markers */}
-      {nearbyStops.map((stop, index) => {
+      {/* Nearby stops markers - only render after map is ready and stops are loaded */}
+      {mapInitialized && nearbyStops && nearbyStops.length > 0 && nearbyStops.map((stop, index) => {
         try {
           const stopLat = parseFloat(stop.stop_lat || stop.lat);
           const stopLon = parseFloat(stop.stop_lon || stop.lon);
@@ -387,25 +428,35 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
               description={`${stop.distance || 0}m away`}
               pinColor="#EF4444"
               onPress={() => {
-                if (onStopPress) {
-                  onStopPress(stop);
+                try {
+                  if (onStopPress) {
+                    onStopPress(stop);
+                  }
+                } catch (error) {
+                  console.error('Error in stop press handler:', error);
                 }
               }}
             />
           );
         } catch (error) {
-          console.error('Error rendering stop marker:', error);
+          console.error('Error rendering stop marker:', error, stop);
           return null;
         }
       })}
       </MapView>
     );
   } catch (error) {
-    console.error('Error rendering map:', error);
+    console.error('❌ Error rendering map:', error);
+    console.error('Error stack:', error.stack);
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Failed to load map</Text>
-        <Text style={styles.errorDetails}>{error.message}</Text>
+        <Text style={styles.errorDetails}>
+          {error?.message || 'Unknown error occurred'}
+        </Text>
+        <Text style={styles.errorDetails}>
+          Please check console for details
+        </Text>
       </View>
     );
   }

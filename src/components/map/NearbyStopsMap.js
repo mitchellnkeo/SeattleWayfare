@@ -142,8 +142,29 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
   // Calculate appropriate region based on location
   // Use larger delta for areas outside Seattle city center
   const getInitialRegion = () => {
-    const lat = userLocation.latitude;
-    const lon = userLocation.longitude;
+    if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
+      // Default to Bothell if location is invalid
+      return {
+        latitude: 47.7619,
+        longitude: -122.2056,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      };
+    }
+
+    const lat = parseFloat(userLocation.latitude);
+    const lon = parseFloat(userLocation.longitude);
+    
+    // Validate coordinates
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      // Default to Bothell if coordinates are invalid
+      return {
+        latitude: 47.7619,
+        longitude: -122.2056,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      };
+    }
     
     // Adjust delta based on location - larger for suburban areas
     let latDelta = 0.015; // ~1.5km
@@ -169,40 +190,75 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
     };
   };
 
-  return (
-    <MapView
-      style={styles.map}
-      initialRegion={getInitialRegion()}
-      showsUserLocation={true}
-      showsMyLocationButton={true}
-      followsUserLocation={false}
-      mapType="standard"
-    >
-      {/* User location accuracy circle */}
-      {userLocation.accuracy && (
-        <Circle
-          center={{
-            latitude: userLocation.latitude,
-            longitude: userLocation.longitude,
-          }}
-          radius={userLocation.accuracy}
-          strokeColor="#3B82F6"
-          fillColor="rgba(59, 130, 246, 0.1)"
-          strokeWidth={2}
-        />
-      )}
+  const region = getInitialRegion();
 
-      {/* Search radius circle */}
-      <Circle
-        center={{
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
+  // Don't render map if region is invalid
+  if (!region || isNaN(region.latitude) || isNaN(region.longitude)) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Invalid map region</Text>
+      </View>
+    );
+  }
+
+  try {
+    return (
+      <MapView
+        style={styles.map}
+        initialRegion={region}
+        showsUserLocation={false} // Disable to prevent crashes, we'll show it manually
+        showsMyLocationButton={false}
+        followsUserLocation={false}
+        mapType="standard"
+        loadingEnabled={true}
+        onMapReady={() => {
+          console.log('Map loaded successfully');
         }}
-        radius={radiusMeters}
-        strokeColor="#10B981"
-        fillColor="rgba(16, 185, 129, 0.1)"
-        strokeWidth={2}
-      />
+        onError={(error) => {
+          console.error('Map error:', error);
+          setError('Map failed to load');
+        }}
+      >
+      {/* User location marker */}
+      {userLocation && userLocation.latitude && userLocation.longitude && (
+        <>
+          {/* User location accuracy circle */}
+          {userLocation.accuracy && userLocation.accuracy > 0 && (
+            <Circle
+              center={{
+                latitude: parseFloat(userLocation.latitude),
+                longitude: parseFloat(userLocation.longitude),
+              }}
+              radius={Math.min(userLocation.accuracy, 1000)} // Cap at 1km
+              strokeColor="#3B82F6"
+              fillColor="rgba(59, 130, 246, 0.1)"
+              strokeWidth={2}
+            />
+          )}
+
+          {/* User location marker */}
+          <Marker
+            coordinate={{
+              latitude: parseFloat(userLocation.latitude),
+              longitude: parseFloat(userLocation.longitude),
+            }}
+            title="Your Location"
+            pinColor="#3B82F6"
+          />
+
+          {/* Search radius circle */}
+          <Circle
+            center={{
+              latitude: parseFloat(userLocation.latitude),
+              longitude: parseFloat(userLocation.longitude),
+            }}
+            radius={radiusMeters}
+            strokeColor="#10B981"
+            fillColor="rgba(16, 185, 129, 0.1)"
+            strokeWidth={2}
+          />
+        </>
+      )}
 
       {/* Nearby stops markers */}
       {nearbyStops.map((stop, index) => {
@@ -237,8 +293,17 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
           return null;
         }
       })}
-    </MapView>
-  );
+      </MapView>
+    );
+  } catch (error) {
+    console.error('Error rendering map:', error);
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Failed to load map</Text>
+        <Text style={styles.errorDetails}>{error.message}</Text>
+      </View>
+    );
+  }
 }
 
 const styles = StyleSheet.create({
@@ -263,6 +328,13 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     textAlign: 'center',
     padding: 20,
+  },
+  errorDetails: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    marginTop: 8,
   },
 });
 

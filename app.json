@@ -47,7 +47,12 @@
           "color": "#1E3A8A"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "seattle-wayfare"
+      }
+    }
   }
 }
 

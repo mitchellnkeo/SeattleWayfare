@@ -244,10 +244,17 @@ export default function HomeScreen() {
 
         {/* Map */}
         <View style={styles.mapContainer}>
-          <NearbyStopsMap
-            radiusMeters={500}
-            onStopPress={handleStopPress}
-          />
+          {userLocation ? (
+            <NearbyStopsMap
+              radiusMeters={500}
+              onStopPress={handleStopPress}
+            />
+          ) : (
+            <View style={styles.mapPlaceholder}>
+              <ActivityIndicator size="large" color="#3B82F6" />
+              <Text style={styles.mapPlaceholderText}>Loading map...</Text>
+            </View>
+          )}
         </View>
 
         {/* Current Stop Info */}
@@ -371,6 +378,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#E5E7EB',
+  },
+  mapPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#E5E7EB',
+  },
+  mapPlaceholderText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
   },
   stopInfo: {
     paddingHorizontal: 20,

@@ -1,0 +1,10 @@
+node_modules
+.expo
+dist
+build
+coverage
+*.log
+.env
+package-lock.json
+yarn.lock
+

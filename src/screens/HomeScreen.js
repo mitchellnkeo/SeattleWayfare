@@ -22,6 +22,8 @@ import locationService from '../services/location/locationService';
 import metroService from '../services/gtfs/metroService';
 import obaService from '../services/onebusaway/obaService';
 import reliabilityService from '../services/reliability/reliabilityService';
+import { getSavedCommutes } from '../utils/storage';
+import CommuteCard from '../components/commute/CommuteCard';
 
 export default function HomeScreen({ navigation }) {
   const [userLocation, setUserLocation] = useState(null);
@@ -31,6 +33,7 @@ export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStop, setSelectedStop] = useState(null);
   const [error, setError] = useState(null);
+  const [savedCommutes, setSavedCommutes] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -81,6 +84,10 @@ export default function HomeScreen({ navigation }) {
     try {
       setLoading(true);
       setError(null);
+
+      // Load saved commutes
+      const commutes = await getSavedCommutes();
+      setSavedCommutes(commutes.slice(0, 3)); // Show up to 3 on home screen
 
       // Initialize services
       await reliabilityService.initialize();
@@ -251,6 +258,38 @@ export default function HomeScreen({ navigation }) {
             within 500m
           </Text>
         </View>
+
+        {/* Quick Access: Saved Commutes */}
+        {savedCommutes.length > 0 && (
+          <View style={styles.savedCommutesSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Quick Access</Text>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('SavedCommutes')}
+              >
+                <Text style={styles.seeAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            {savedCommutes.map((commute) => (
+              <CommuteCard
+                key={commute.id}
+                commute={commute}
+                onPress={() => navigation.navigate('TripPlanner', {
+                  origin: commute.origin,
+                  destination: commute.destination,
+                  safeMode: commute.safeMode,
+                  preferredRoutes: commute.preferredRoutes,
+                })}
+                onLaunch={() => navigation.navigate('TripPlanner', {
+                  origin: commute.origin,
+                  destination: commute.destination,
+                  safeMode: commute.safeMode,
+                  preferredRoutes: commute.preferredRoutes,
+                })}
+              />
+            ))}
+          </View>
+        )}
 
         {/* Map */}
         <View style={styles.mapContainer}>
@@ -485,6 +524,21 @@ const styles = StyleSheet.create({
   stopItemDistance: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  savedCommutesSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  seeAllText: {
+    fontSize: 14,
+    color: '#1E3A8A',
+    fontWeight: '600',
   },
 });
 

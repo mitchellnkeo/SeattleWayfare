@@ -9,6 +9,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from '../screens/HomeScreen';
 import TripPlannerScreen from '../screens/TripPlannerScreen';
 import RouteDetailScreen from '../screens/RouteDetailScreen';
+import SavedCommutesScreen from '../screens/SavedCommutesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -49,6 +50,14 @@ export default function AppNavigator() {
           options={{
             title: 'Route Details',
             headerShown: false, // RouteDetailScreen has its own header
+          }}
+        />
+        <Stack.Screen
+          name="SavedCommutes"
+          component={SavedCommutesScreen}
+          options={{
+            title: 'Saved Commutes',
+            headerShown: false, // SavedCommutesScreen has its own header
           }}
         />
       </Stack.Navigator>

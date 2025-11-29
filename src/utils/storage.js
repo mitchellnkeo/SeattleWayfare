@@ -140,3 +140,37 @@ export async function setGTFSDownloadDate(date) {
   return setStorageItem(STORAGE_KEYS.GTFS_DOWNLOAD_DATE, date);
 }
 
+// Saved Commutes storage helpers
+export async function getSavedCommutes() {
+  return getStorageItem(STORAGE_KEYS.SAVED_COMMUTES) || [];
+}
+
+export async function setSavedCommutes(commutes) {
+  return setStorageItem(STORAGE_KEYS.SAVED_COMMUTES, commutes);
+}
+
+export async function addSavedCommute(commute) {
+  const commutes = await getSavedCommutes();
+  const newCommutes = [...commutes, commute];
+  return setSavedCommutes(newCommutes);
+}
+
+export async function updateSavedCommute(commuteId, updates) {
+  const commutes = await getSavedCommutes();
+  const updatedCommutes = commutes.map((c) =>
+    c.id === commuteId ? { ...c, ...updates, lastUsed: new Date().toISOString() } : c
+  );
+  return setSavedCommutes(updatedCommutes);
+}
+
+export async function deleteSavedCommute(commuteId) {
+  const commutes = await getSavedCommutes();
+  const filteredCommutes = commutes.filter((c) => c.id !== commuteId);
+  return setSavedCommutes(filteredCommutes);
+}
+
+export async function getSavedCommute(commuteId) {
+  const commutes = await getSavedCommutes();
+  return commutes.find((c) => c.id === commuteId) || null;
+}
+

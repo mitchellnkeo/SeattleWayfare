@@ -501,7 +501,7 @@ export default new ReliabilityService();
 **Components:**
 - `HomeScreen.js`
 - `NearbyStopsMap.js`
-- `ArrivalCard.js` (with reliability indicator)ç
+- `ArrivalCard.js` (with reliability indicator)
 - `ReliabilityBadge.js`
 
 ### 3.2 Trip Planner

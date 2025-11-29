@@ -11,11 +11,16 @@ import metroService from '../../services/gtfs/metroService';
 
 // Lazy load MapView to prevent crashes if native module isn't available
 // Skip on web platform as react-native-maps doesn't work on web
-let MapView, Marker, Circle;
+let MapView = null;
+let Marker = null;
+let Circle = null;
 let mapsAvailable = false;
 
+// Only attempt to load maps on native platforms
+// Metro bundler should tree-shake this on web
 if (Platform.OS !== 'web') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const maps = require('react-native-maps');
     MapView = maps.default;
     Marker = maps.Marker;
@@ -24,12 +29,8 @@ if (Platform.OS !== 'web') {
     console.log('✅ react-native-maps loaded successfully');
   } catch (error) {
     console.warn('⚠️ react-native-maps not available:', error.message);
-    MapView = null;
     mapsAvailable = false;
   }
-} else {
-  // Web platform - maps not supported
-  mapsAvailable = false;
 }
 
 // Check if we're in Expo Go (maps don't work in Expo Go)
@@ -218,8 +219,8 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
     }
   };
 
-  // Check if MapView is available
-  if (!MapView || !mapsAvailable) {
+  // Check platform first - web doesn't support maps
+  if (Platform.OS === 'web' || !MapView || !mapsAvailable) {
     const inExpoGo = isExpoGo();
     return (
       <View style={styles.container}>

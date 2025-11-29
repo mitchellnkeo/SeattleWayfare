@@ -10,11 +10,17 @@ import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
 
 // Lazy load MapView - only on native platforms (not web)
-let MapView, Marker, Polyline;
+// Use conditional require that Metro can tree-shake on web
+let MapView = null;
+let Marker = null;
+let Polyline = null;
 let mapsAvailable = false;
 
+// Only attempt to load maps on native platforms
+// Metro bundler should tree-shake this on web
 if (Platform.OS !== 'web') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const maps = require('react-native-maps');
     MapView = maps.default;
     Marker = maps.Marker;
@@ -22,12 +28,8 @@ if (Platform.OS !== 'web') {
     mapsAvailable = true;
   } catch (error) {
     console.warn('⚠️ react-native-maps not available:', error.message);
-    MapView = null;
     mapsAvailable = false;
   }
-} else {
-  // Web platform - maps not supported
-  mapsAvailable = false;
 }
 
 /**
@@ -90,18 +92,21 @@ export default function RouteMap({ routeId, stops = [], route }) {
     });
   };
 
-  if (!MapView || !mapsAvailable) {
+  // Check platform first - web doesn't support maps
+  if (Platform.OS === 'web' || !MapView || !mapsAvailable) {
     return (
       <View style={styles.container}>
         <View style={styles.fallbackContainer}>
           <Text style={styles.fallbackTitle}>Route Map</Text>
           <Text style={styles.fallbackText}>
-            Map not available. Showing stop list instead.
+            {Platform.OS === 'web'
+              ? 'Maps are not available on web. Showing stop list instead.'
+              : 'Map not available. Showing stop list instead.'}
           </Text>
           {stops.length > 0 && (
             <View style={styles.stopsList}>
-              {stops.slice(0, 10).map((stop, index) => (
-                <Text key={index} style={styles.stopItem}>
+              {stops.map((stop, index) => (
+                <Text key={stop.stop_id || index} style={styles.stopItem}>
                   {index + 1}. {stop.stop_name || stop.name || 'Unknown Stop'}
                 </Text>
               ))}

@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import NearbyStopsMap from '../components/map/NearbyStopsMap';
 import ArrivalCard from '../components/transit/ArrivalCard';
 import locationService from '../services/location/locationService';
@@ -22,7 +23,7 @@ import metroService from '../services/gtfs/metroService';
 import obaService from '../services/onebusaway/obaService';
 import reliabilityService from '../services/reliability/reliabilityService';
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const [userLocation, setUserLocation] = useState(null);
   const [nearbyStops, setNearbyStops] = useState([]);
   const [arrivals, setArrivals] = useState([]);
@@ -235,7 +236,16 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Nearby Stops</Text>
+          <View style={styles.headerTop}>
+            <Text style={styles.title}>Nearby Stops</Text>
+            <TouchableOpacity
+              style={styles.planTripButton}
+              onPress={() => navigation.navigate('TripPlanner')}
+            >
+              <Ionicons name="map" size={20} color="#FFFFFF" />
+              <Text style={styles.planTripButtonText}>Plan Trip</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.subtitle}>
             {nearbyStops.length} stop{nearbyStops.length !== 1 ? 's' : ''}{' '}
             within 500m
@@ -361,11 +371,31 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 12,
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#111827',
-    marginBottom: 4,
+    flex: 1,
+  },
+  planTripButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E3A8A',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  planTripButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   subtitle: {
     fontSize: 14,

@@ -77,14 +77,15 @@ class SoundTransitService {
 
   /**
    * Parse a single alert entity from Sound Transit API
+   * Note: API uses snake_case (header_text, active_period, etc.)
    * @private
    */
   _parseAlert(entity) {
     const alert = entity.alert;
     const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
 
-    // Parse active periods
-    const activePeriods = (alert.activePeriod || []).map((period) => ({
+    // Parse active periods (API uses snake_case: active_period)
+    const activePeriods = (alert.active_period || []).map((period) => ({
       start: period.start * 1000, // Convert to milliseconds
       end: period.end ? period.end * 1000 : undefined,
     }));
@@ -96,32 +97,40 @@ class SoundTransitService {
       return now >= start && now <= end;
     });
 
-    // Parse affected entities
-    const informedEntities = alert.informedEntity || [];
+    // Parse affected entities (API uses snake_case: informed_entity, route_id, stop_id)
+    const informedEntities = alert.informed_entity || [];
     const affectedRoutes = informedEntities
-      .filter((entity) => entity.routeId)
-      .map((entity) => entity.routeId);
+      .filter((entity) => entity.route_id)
+      .map((entity) => entity.route_id);
     const affectedStops = informedEntities
-      .filter((entity) => entity.stopId)
-      .map((entity) => entity.stopId);
+      .filter((entity) => entity.stop_id)
+      .map((entity) => entity.stop_id);
 
-    // Parse text translations
+    // Parse text translations (API uses snake_case: header_text, description_text)
     const headerText =
-      alert.headerText?.translation?.find((t) => t.language === 'en')
+      alert.header_text?.translation?.find((t) => t.language === 'en')
         ?.text || '';
     const descriptionText =
-      alert.descriptionText?.translation?.find((t) => t.language === 'en')
+      alert.description_text?.translation?.find((t) => t.language === 'en')
         ?.text || '';
     const urlText =
       alert.url?.translation?.find((t) => t.language === 'en')?.text || '';
 
-    // Determine severity
+    // Determine severity - check severity_level first, then fall back to effect
     let severity = 'info';
-    if (alert.effect === 'NO_SERVICE' || alert.effect === 'SIGNIFICANT_DELAYS') {
+    if (alert.severity_level) {
+      const level = alert.severity_level.toUpperCase();
+      if (level === 'SEVERE' || level === 'CRITICAL') {
+        severity = 'severe';
+      } else if (level === 'WARNING') {
+        severity = 'warning';
+      }
+    } else if (alert.effect === 'NO_SERVICE' || alert.effect === 'SIGNIFICANT_DELAYS') {
       severity = 'severe';
     } else if (
       alert.effect === 'REDUCED_SERVICE' ||
-      alert.effect === 'DETOUR'
+      alert.effect === 'DETOUR' ||
+      alert.effect === 'ACCESSIBILITY_ISSUE'
     ) {
       severity = 'warning';
     }
@@ -136,6 +145,7 @@ class SoundTransitService {
       affectedStops,
       severity,
       effect: alert.effect,
+      severityLevel: alert.severity_level,
       isActive,
       cause: alert.cause,
     };

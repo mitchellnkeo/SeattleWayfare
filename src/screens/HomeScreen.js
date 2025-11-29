@@ -286,8 +286,10 @@ export default function HomeScreen({ navigation }) {
                 key={`${arrival.tripId}-${arrival.scheduledArrivalTime}-${index}`}
                 arrival={arrival}
                 onPress={() => {
-                  // Navigate to route detail (to be implemented)
-                  console.log('Navigate to route:', arrival.routeId);
+                  navigation.navigate('RouteDetail', {
+                    routeId: arrival.routeId,
+                    routeShortName: arrival.routeShortName,
+                  });
                 }}
               />
             ))}

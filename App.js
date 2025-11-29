@@ -6,6 +6,7 @@ import testGTFSService from './src/services/gtfs/testService';
 import verifyRealData from './src/services/gtfs/verifyRealData';
 import testOBAService from './src/services/onebusaway/testObaService';
 import obaService from './src/services/onebusaway/obaService';
+import testSTService from './src/services/soundtransit/testStService';
 
 export default function App() {
   const [status, setStatus] = useState('Initializing...');
@@ -159,6 +160,35 @@ export default function App() {
           <Text style={styles.buttonText}>
             {obaService.isConfigured() ? 'Test OneBusAway API' : 'Test OBA (No API Key)'}
           </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.buttonSecondary, isLoading && styles.buttonDisabled]}
+          onPress={async () => {
+            setTestResults('Testing Sound Transit API...\n');
+            setIsLoading(true);
+            try {
+              const originalLog = console.log;
+              let logOutput = '';
+              console.log = (...args) => {
+                const message = args.map(arg => 
+                  typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                logOutput += message + '\n';
+                originalLog(...args);
+              };
+              await testSTService();
+              console.log = originalLog;
+              setTestResults(logOutput);
+            } catch (error) {
+              setTestResults(`ST Test error: ${error.message}\n${error.stack}`);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>Test Sound Transit Alerts</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

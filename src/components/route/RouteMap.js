@@ -10,16 +10,17 @@ import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
 
 // Lazy load MapView - only on native platforms (not web)
-// Use conditional require that Metro can tree-shake on web
+// On web, Metro will use RouteMap.web.js instead
 let MapView = null;
 let Marker = null;
 let Polyline = null;
 let mapsAvailable = false;
 
 // Only attempt to load maps on native platforms
-// Metro bundler should tree-shake this on web
+// This file should not be used on web - RouteMap.web.js will be used instead
 if (Platform.OS !== 'web') {
   try {
+    // Dynamic require to prevent Metro from analyzing on web
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const maps = require('react-native-maps');
     MapView = maps.default;

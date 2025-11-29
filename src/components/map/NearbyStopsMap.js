@@ -10,16 +10,17 @@ import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
 
 // Lazy load MapView to prevent crashes if native module isn't available
-// Skip on web platform as react-native-maps doesn't work on web
+// On web, Metro will use NearbyStopsMap.web.js instead
 let MapView = null;
 let Marker = null;
 let Circle = null;
 let mapsAvailable = false;
 
 // Only attempt to load maps on native platforms
-// Metro bundler should tree-shake this on web
+// This file should not be used on web - NearbyStopsMap.web.js will be used instead
 if (Platform.OS !== 'web') {
   try {
+    // Dynamic require to prevent Metro from analyzing on web
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const maps = require('react-native-maps');
     MapView = maps.default;

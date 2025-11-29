@@ -7,6 +7,7 @@
 import axios from 'axios';
 import JSZip from 'jszip';
 import Papa from 'papaparse';
+import { Platform } from 'react-native';
 import {
   getGTFSRoutes,
   setGTFSRoutes,
@@ -37,9 +38,25 @@ class MetroGTFSService {
   /**
    * Download and parse GTFS static data
    * Downloads ZIP, extracts CSV files, parses and stores in AsyncStorage
+   * Note: On web, this will fail due to CORS. Use cached data instead.
    * @returns {Promise<boolean>} Success status
    */
   async fetchStaticData() {
+    // On web platform, GTFS download fails due to CORS
+    // Use cached data from AsyncStorage instead
+    if (Platform.OS === 'web') {
+      console.log('⚠️  Web platform detected - GTFS download not available due to CORS');
+      console.log('📦 Attempting to load cached GTFS data from storage...');
+      const loaded = await this.loadFromStorage();
+      if (loaded) {
+        console.log('✅ Loaded GTFS data from cache');
+        return true;
+      } else {
+        console.warn('⚠️  No cached GTFS data available on web. Please use native app to download data.');
+        return false;
+      }
+    }
+
     try {
       console.log('🌐 DOWNLOADING REAL GTFS DATA from King County Metro...');
       console.log('📍 Source URL:', GTFS_URL);
@@ -200,12 +217,18 @@ class MetroGTFSService {
     const loaded = await this.loadFromStorage();
 
     if (!loaded) {
-      // No data in storage, fetch it
+      // No data in storage, fetch it (will use cache on web)
       console.log('No GTFS data in storage, fetching...');
       return await this.fetchStaticData();
     }
 
-    // Check if update is needed
+    // On web, don't try to update in background (CORS will fail)
+    if (Platform.OS === 'web') {
+      console.log('✅ GTFS data loaded from cache (web platform)');
+      return true;
+    }
+
+    // Check if update is needed (native platforms only)
     const needsUpdate = await this.needsUpdate();
     if (needsUpdate) {
       console.log('GTFS data is stale, updating in background...');

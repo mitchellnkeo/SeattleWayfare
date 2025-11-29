@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import metroService from './src/services/gtfs/metroService';
 import testGTFSService from './src/services/gtfs/testService';
+import verifyRealData from './src/services/gtfs/verifyRealData';
 
 export default function App() {
   const [status, setStatus] = useState('Initializing...');
@@ -96,6 +97,35 @@ export default function App() {
           disabled={isLoading}
         >
           <Text style={styles.buttonText}>Run GTFS Tests</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.buttonSecondary, isLoading && styles.buttonDisabled]}
+          onPress={async () => {
+            setTestResults('Verifying real data...\n');
+            setIsLoading(true);
+            try {
+              const originalLog = console.log;
+              let logOutput = '';
+              console.log = (...args) => {
+                const message = args.map(arg => 
+                  typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                logOutput += message + '\n';
+                originalLog(...args);
+              };
+              await verifyRealData();
+              console.log = originalLog;
+              setTestResults(logOutput);
+            } catch (error) {
+              setTestResults(`Verification error: ${error.message}`);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>Verify Real Data</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

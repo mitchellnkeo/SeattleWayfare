@@ -41,7 +41,9 @@ class MetroGTFSService {
    */
   async fetchStaticData() {
     try {
-      console.log('Downloading GTFS data from:', GTFS_URL);
+      console.log('🌐 DOWNLOADING REAL GTFS DATA from King County Metro...');
+      console.log('📍 Source URL:', GTFS_URL);
+      console.log('⏳ This may take 30-60 seconds...\n');
 
       // Download ZIP file
       const response = await axios.get(GTFS_URL, {
@@ -49,7 +51,10 @@ class MetroGTFSService {
         timeout: 60000, // 60 second timeout
       });
 
-      console.log('GTFS ZIP downloaded, size:', response.data.byteLength, 'bytes');
+      const fileSizeMB = (response.data.byteLength / (1024 * 1024)).toFixed(2);
+      console.log(`✅ GTFS ZIP downloaded successfully!`);
+      console.log(`   Size: ${fileSizeMB} MB (${response.data.byteLength.toLocaleString()} bytes)`);
+      console.log(`   This is REAL data from King County Metro\n`);
 
       // Extract ZIP
       const zip = await JSZip.loadAsync(response.data);
@@ -76,14 +81,17 @@ class MetroGTFSService {
       this.isLoaded = true;
 
       // Store in AsyncStorage
+      const downloadDate = new Date().toISOString();
       await setGTFSRoutes(routes);
       await setGTFSStops(stops);
       await setGTFSTrips(trips);
       await setGTFSStopTimes(stopTimes);
-      await setGTFSVersion(new Date().toISOString());
-      await setGTFSDownloadDate(new Date().toISOString());
+      await setGTFSVersion(downloadDate);
+      await setGTFSDownloadDate(downloadDate);
 
-      console.log('GTFS data stored in AsyncStorage');
+      console.log('💾 REAL GTFS data stored in AsyncStorage');
+      console.log(`   Download date: ${new Date(downloadDate).toLocaleString()}`);
+      console.log(`   This data will be used for all queries\n`);
       return true;
     } catch (error) {
       console.error('Error fetching GTFS data:', error);
@@ -138,11 +146,21 @@ class MetroGTFSService {
         this.trips = trips;
         this.stopTimes = stopTimes;
         this.isLoaded = true;
-        console.log('GTFS data loaded from storage');
+        
+        const downloadDate = await getGTFSDownloadDate();
+        if (downloadDate) {
+          const date = new Date(downloadDate);
+          console.log('📂 Loaded REAL GTFS data from cache');
+          console.log(`   Originally downloaded: ${date.toLocaleString()}`);
+          console.log(`   Routes: ${routes.length}, Stops: ${stops.length}`);
+          console.log(`   This is REAL data from King County Metro\n`);
+        } else {
+          console.log('📂 Loaded GTFS data from cache (no download date recorded)\n');
+        }
         return true;
       }
 
-      console.log('No GTFS data found in storage');
+      console.log('⚠️  No GTFS data found in storage - will download from King County Metro\n');
       return false;
     } catch (error) {
       console.error('Error loading GTFS from storage:', error);

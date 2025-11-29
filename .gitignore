@@ -60,12 +60,3 @@ logs
 *.temp
 .cache/
 
-# API Keys (keep structure, ignore values)
-**/config/api-keys.js
-**/secrets/
-
-# Build artifacts
-*.apk
-*.aab
-*.ipa
-

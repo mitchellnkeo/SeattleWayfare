@@ -34,7 +34,7 @@ Seattle Wayfare solves the biggest pain point in Seattle transit: unreliability.
 
 ### 1.1 Initialize Project
 ```bash
-npx create-expo-app seattle-wayfare --template blank
+git a
 cd seattle-wayfare
 npx expo install nativewind tailwindcss
 ```

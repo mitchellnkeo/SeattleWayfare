@@ -8,6 +8,7 @@ import testOBAService from './src/services/onebusaway/testObaService';
 import obaService from './src/services/onebusaway/obaService';
 import testSTService from './src/services/soundtransit/testStService';
 import testReliabilityService from './src/services/reliability/testReliabilityService';
+import testLocationService from './src/services/location/testLocationService';
 
 export default function App() {
   const [status, setStatus] = useState('Initializing...');
@@ -219,6 +220,35 @@ export default function App() {
           disabled={isLoading}
         >
           <Text style={styles.buttonText}>Test Reliability Service</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.buttonSecondary, isLoading && styles.buttonDisabled]}
+          onPress={async () => {
+            setTestResults('Testing Location Service...\n');
+            setIsLoading(true);
+            try {
+              const originalLog = console.log;
+              let logOutput = '';
+              console.log = (...args) => {
+                const message = args.map(arg => 
+                  typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                logOutput += message + '\n';
+                originalLog(...args);
+              };
+              await testLocationService();
+              console.log = originalLog;
+              setTestResults(logOutput);
+            } catch (error) {
+              setTestResults(`Location Test error: ${error.message}\n${error.stack}`);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>Test Location Service</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

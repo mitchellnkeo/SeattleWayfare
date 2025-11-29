@@ -5,10 +5,42 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import MapView, { Marker, Circle } from 'react-native-maps';
+import { View, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
 import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
+
+// Lazy load MapView to prevent crashes if native module isn't available
+let MapView, Marker, Circle;
+let mapsAvailable = false;
+
+try {
+  const maps = require('react-native-maps');
+  MapView = maps.default;
+  Marker = maps.Marker;
+  Circle = maps.Circle;
+  mapsAvailable = true;
+  console.log('✅ react-native-maps loaded successfully');
+} catch (error) {
+  console.warn('⚠️ react-native-maps not available:', error.message);
+  MapView = null;
+  mapsAvailable = false;
+}
+
+// Check if we're in Expo Go (maps don't work in Expo Go)
+const isExpoGo = () => {
+  try {
+    return Constants?.executionEnvironment === 'storeClient';
+  } catch {
+    return false;
+  }
+};
+
+let Constants;
+try {
+  Constants = require('expo-constants').default;
+} catch {
+  // Constants not available
+}
 
 /**
  * NearbyStopsMap - Shows user location and nearby stops on map
@@ -118,6 +150,48 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
     }
   };
 
+  // Check if MapView is available
+  if (!MapView || !mapsAvailable) {
+    const inExpoGo = isExpoGo();
+    return (
+      <View style={styles.container}>
+        <View style={styles.fallbackContainer}>
+          <Text style={styles.fallbackTitle}>📍 Nearby Stops</Text>
+          {inExpoGo && (
+            <Text style={styles.fallbackWarning}>
+              Maps require a development build. Running in Expo Go.
+            </Text>
+          )}
+          {!inExpoGo && (
+            <Text style={styles.fallbackWarning}>
+              Map component not available. Showing list view instead.
+            </Text>
+          )}
+          {userLocation && (
+            <Text style={styles.fallbackLocation}>
+              Your location: {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
+            </Text>
+          )}
+          {nearbyStops.length > 0 ? (
+            <View style={styles.fallbackList}>
+              {nearbyStops.slice(0, 10).map((stop, index) => {
+                const stopName = stop.stop_name || stop.name || 'Unknown Stop';
+                return (
+                  <View key={stop.stop_id || stop.id || index} style={styles.fallbackItem}>
+                    <Text style={styles.fallbackItemName}>{stopName}</Text>
+                    <Text style={styles.fallbackItemDistance}>{stop.distance}m away</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={styles.fallbackEmpty}>No stops found within {radiusMeters}m</Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -136,7 +210,12 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
   }
 
   if (!userLocation) {
-    return null;
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Getting location...</Text>
+      </View>
+    );
   }
 
   // Calculate appropriate region based on location
@@ -201,6 +280,27 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
     );
   }
 
+  // Add a small delay to ensure native module is ready
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    // Small delay to ensure native module is initialized
+    const timer = setTimeout(() => {
+      setMapReady(true);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!mapReady) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Initializing map...</Text>
+      </View>
+    );
+  }
+
   try {
     return (
       <MapView
@@ -211,12 +311,17 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
         followsUserLocation={false}
         mapType="standard"
         loadingEnabled={true}
+        loadingIndicatorColor="#3B82F6"
+        loadingBackgroundColor="#F9FAFB"
         onMapReady={() => {
-          console.log('Map loaded successfully');
+          console.log('✅ Map loaded successfully');
         }}
         onError={(error) => {
-          console.error('Map error:', error);
-          setError('Map failed to load');
+          console.error('❌ Map error:', error);
+          setError('Map failed to load: ' + (error?.message || 'Unknown error'));
+        }}
+        onLayout={() => {
+          console.log('Map layout completed');
         }}
       >
       {/* User location marker */}
@@ -335,6 +440,59 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
     marginTop: 8,
+  },
+  fallbackContainer: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+  },
+  fallbackTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  fallbackWarning: {
+    fontSize: 12,
+    color: '#F59E0B',
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  fallbackLocation: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 16,
+  },
+  fallbackList: {
+    marginTop: 8,
+  },
+  fallbackItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  fallbackItemName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    flex: 1,
+  },
+  fallbackItemDistance: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 12,
+  },
+  fallbackEmpty: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 20,
   },
 });
 

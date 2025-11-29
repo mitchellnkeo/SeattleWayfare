@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation/AppNavigator';
 import { setupNotifications } from './src/utils/notifications';
@@ -21,8 +22,12 @@ export default function App() {
       }
     };
 
-    // Register background fetch
+    // Register background fetch (only on native platforms)
     const initBackgroundFetch = async () => {
+      if (Platform.OS === 'web') {
+        console.log('ℹ️ Background fetch not available on web');
+        return;
+      }
       try {
         await registerBackgroundFetch();
         console.log('✅ Background fetch initialized');

@@ -4,6 +4,7 @@
  * Based on ROADMAP.md Phase 4.2
  */
 
+import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import { getSavedCommutes, getStorageItem, setStorageItem } from '../utils/storage';
@@ -223,6 +224,12 @@ async function checkTransferRisks(commute, now) {
  * @returns {Promise<boolean>} True if registration successful
  */
 export async function registerBackgroundFetch() {
+  // Background fetch is not available on web
+  if (Platform.OS === 'web') {
+    console.log('ℹ️ Background fetch not available on web platform');
+    return false;
+  }
+
   try {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK);
     
@@ -249,6 +256,10 @@ export async function registerBackgroundFetch() {
  * Unregister background fetch task
  */
 export async function unregisterBackgroundFetch() {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
   try {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK);
     
@@ -266,6 +277,10 @@ export async function unregisterBackgroundFetch() {
  * @returns {Promise<boolean>} True if registered
  */
 export async function isBackgroundFetchRegistered() {
+  if (Platform.OS === 'web') {
+    return false;
+  }
+
   try {
     return await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK);
   } catch (error) {

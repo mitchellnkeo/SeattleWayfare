@@ -5,6 +5,7 @@
  */
 
 import * as Location from 'expo-location';
+import { Platform } from 'react-native';
 import { SEATTLE_BOUNDS } from '../../utils/constants';
 
 class LocationService {
@@ -152,10 +153,22 @@ class LocationService {
    */
   stopWatching() {
     if (this.watchSubscription) {
-      this.watchSubscription.remove();
-      this.watchSubscription = null;
-      this.locationCallbacks = [];
-      console.log('📍 Stopped watching position');
+      try {
+        // On web, remove() might not be available
+        if (Platform.OS === 'web') {
+          // Web doesn't support location watching the same way
+          this.watchSubscription = null;
+        } else if (typeof this.watchSubscription.remove === 'function') {
+          this.watchSubscription.remove();
+        }
+        this.watchSubscription = null;
+        this.locationCallbacks = [];
+        console.log('📍 Stopped watching position');
+      } catch (error) {
+        console.warn('⚠️ Error stopping location watch:', error);
+        this.watchSubscription = null;
+        this.locationCallbacks = [];
+      }
     }
   }
 

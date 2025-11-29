@@ -7,21 +7,16 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#1E3A8A"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.seattlewayfare.app",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location",
-          "fetch"
-        ],
+        "UIBackgroundModes": ["location", "fetch"],
         "NSLocationWhenInUseUsageDescription": "Seattle Wayfare needs your location to show nearby transit stops and provide accurate arrival times.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Seattle Wayfare needs your location to send delay notifications and track your commute."
       }
@@ -63,4 +58,3 @@
     }
   }
 }
-

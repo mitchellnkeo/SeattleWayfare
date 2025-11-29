@@ -5,23 +5,28 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
 import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
 
-// Lazy load MapView
+// Lazy load MapView - only on native platforms (not web)
 let MapView, Marker, Polyline;
 let mapsAvailable = false;
 
-try {
-  const maps = require('react-native-maps');
-  MapView = maps.default;
-  Marker = maps.Marker;
-  Polyline = maps.Polyline;
-  mapsAvailable = true;
-} catch (error) {
-  console.warn('⚠️ react-native-maps not available:', error.message);
-  MapView = null;
+if (Platform.OS !== 'web') {
+  try {
+    const maps = require('react-native-maps');
+    MapView = maps.default;
+    Marker = maps.Marker;
+    Polyline = maps.Polyline;
+    mapsAvailable = true;
+  } catch (error) {
+    console.warn('⚠️ react-native-maps not available:', error.message);
+    MapView = null;
+    mapsAvailable = false;
+  }
+} else {
+  // Web platform - maps not supported
   mapsAvailable = false;
 }
 

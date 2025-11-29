@@ -10,19 +10,25 @@ import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
 
 // Lazy load MapView to prevent crashes if native module isn't available
+// Skip on web platform as react-native-maps doesn't work on web
 let MapView, Marker, Circle;
 let mapsAvailable = false;
 
-try {
-  const maps = require('react-native-maps');
-  MapView = maps.default;
-  Marker = maps.Marker;
-  Circle = maps.Circle;
-  mapsAvailable = true;
-  console.log('✅ react-native-maps loaded successfully');
-} catch (error) {
-  console.warn('⚠️ react-native-maps not available:', error.message);
-  MapView = null;
+if (Platform.OS !== 'web') {
+  try {
+    const maps = require('react-native-maps');
+    MapView = maps.default;
+    Marker = maps.Marker;
+    Circle = maps.Circle;
+    mapsAvailable = true;
+    console.log('✅ react-native-maps loaded successfully');
+  } catch (error) {
+    console.warn('⚠️ react-native-maps not available:', error.message);
+    MapView = null;
+    mapsAvailable = false;
+  }
+} else {
+  // Web platform - maps not supported
   mapsAvailable = false;
 }
 

@@ -22,20 +22,40 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    loadLocationAndStops();
+    let isMounted = true;
+
+    const loadData = async () => {
+      try {
+        await loadLocationAndStops();
+      } catch (error) {
+        if (isMounted) {
+          console.error('Error in loadLocationAndStops:', error);
+          setError('Failed to load location');
+        }
+      }
+    };
+
+    loadData();
     
     // Watch for location updates
     const watchCallback = (location) => {
-      setUserLocation(location);
-      updateNearbyStops(location);
+      if (isMounted) {
+        setUserLocation(location);
+        updateNearbyStops(location);
+      }
     };
     
     locationService.watchPosition(watchCallback, {
       timeInterval: 30000, // Update every 30 seconds
       distanceInterval: 50, // Update every 50 meters
+    }).catch((error) => {
+      if (isMounted) {
+        console.error('Error watching position:', error);
+      }
     });
 
     return () => {
+      isMounted = false;
       locationService.stopWatching();
     };
   }, [radiusMeters]);
@@ -48,30 +68,31 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
       // Get current location
       const location = await locationService.getCurrentLocation();
       if (!location) {
-        // Use default Seattle location if permission denied
+        // Use default Bothell location if permission denied (user mentioned they live in Bothell)
         const defaultLocation = {
-          latitude: 47.609421,
-          longitude: -122.337631,
+          latitude: 47.7619, // Bothell
+          longitude: -122.2056,
           accuracy: 50,
         };
         setUserLocation(defaultLocation);
-        updateNearbyStops(defaultLocation);
+        await updateNearbyStops(defaultLocation);
+        setLoading(false);
         return;
       }
 
       setUserLocation(location);
-      updateNearbyStops(location);
+      await updateNearbyStops(location);
     } catch (err) {
       console.error('Error loading location:', err);
       setError('Could not get location');
-      // Use default location
+      // Use default Bothell location
       const defaultLocation = {
-        latitude: 47.609421,
-        longitude: -122.337631,
+        latitude: 47.7619, // Bothell
+        longitude: -122.2056,
         accuracy: 50,
       };
       setUserLocation(defaultLocation);
-      updateNearbyStops(defaultLocation);
+      await updateNearbyStops(defaultLocation);
     } finally {
       setLoading(false);
     }
@@ -118,18 +139,44 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
     return null;
   }
 
+  // Calculate appropriate region based on location
+  // Use larger delta for areas outside Seattle city center
+  const getInitialRegion = () => {
+    const lat = userLocation.latitude;
+    const lon = userLocation.longitude;
+    
+    // Adjust delta based on location - larger for suburban areas
+    let latDelta = 0.015; // ~1.5km
+    let lonDelta = 0.015;
+    
+    // If in Bothell/Lynnwood area (north), use larger delta
+    if (lat > 47.7) {
+      latDelta = 0.02;
+      lonDelta = 0.02;
+    }
+    
+    // If in Bellevue/Redmond area (east), use larger delta
+    if (lon > -122.1) {
+      latDelta = 0.02;
+      lonDelta = 0.02;
+    }
+    
+    return {
+      latitude: lat,
+      longitude: lon,
+      latitudeDelta: latDelta,
+      longitudeDelta: lonDelta,
+    };
+  };
+
   return (
     <MapView
       style={styles.map}
-      initialRegion={{
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }}
+      initialRegion={getInitialRegion()}
       showsUserLocation={true}
       showsMyLocationButton={true}
       followsUserLocation={false}
+      mapType="standard"
     >
       {/* User location accuracy circle */}
       {userLocation.accuracy && (
@@ -158,30 +205,37 @@ export default function NearbyStopsMap({ radiusMeters = 500, onStopPress }) {
       />
 
       {/* Nearby stops markers */}
-      {nearbyStops.map((stop) => {
-        const stopLat = stop.stop_lat || stop.lat;
-        const stopLon = stop.stop_lon || stop.lon;
-        const stopName = stop.stop_name || stop.name || 'Unknown Stop';
+      {nearbyStops.map((stop, index) => {
+        try {
+          const stopLat = parseFloat(stop.stop_lat || stop.lat);
+          const stopLon = parseFloat(stop.stop_lon || stop.lon);
+          const stopName = stop.stop_name || stop.name || 'Unknown Stop';
 
-        if (!stopLat || !stopLon) return null;
+          if (!stopLat || !stopLon || isNaN(stopLat) || isNaN(stopLon)) {
+            return null;
+          }
 
-        return (
-          <Marker
-            key={stop.stop_id || stop.id || `stop-${stopLat}-${stopLon}`}
-            coordinate={{
-              latitude: stopLat,
-              longitude: stopLon,
-            }}
-            title={stopName}
-            description={`${stop.distance}m away`}
-            pinColor="#EF4444"
-            onPress={() => {
-              if (onStopPress) {
-                onStopPress(stop);
-              }
-            }}
-          />
-        );
+          return (
+            <Marker
+              key={stop.stop_id || stop.id || `stop-${index}-${stopLat}-${stopLon}`}
+              coordinate={{
+                latitude: stopLat,
+                longitude: stopLon,
+              }}
+              title={stopName}
+              description={`${stop.distance || 0}m away`}
+              pinColor="#EF4444"
+              onPress={() => {
+                if (onStopPress) {
+                  onStopPress(stop);
+                }
+              }}
+            />
+          );
+        } catch (error) {
+          console.error('Error rendering stop marker:', error);
+          return null;
+        }
       })}
     </MapView>
   );

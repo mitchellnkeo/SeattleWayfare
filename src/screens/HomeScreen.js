@@ -32,17 +32,37 @@ export default function HomeScreen() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    initializeScreen();
-    
-    // Set up location watching
-    const watchCallback = (location) => {
-      setUserLocation(location);
-      updateNearbyStops(location);
+    let isMounted = true;
+
+    const init = async () => {
+      try {
+        await initializeScreen();
+        
+        // Set up location watching
+        const watchCallback = (location) => {
+          if (isMounted) {
+            setUserLocation(location);
+            updateNearbyStops(location);
+          }
+        };
+        
+        locationService.watchPosition(watchCallback).catch((error) => {
+          if (isMounted) {
+            console.error('Error watching position:', error);
+          }
+        });
+      } catch (error) {
+        if (isMounted) {
+          console.error('Error in useEffect:', error);
+          setError('Failed to initialize');
+        }
+      }
     };
-    
-    locationService.watchPosition(watchCallback);
+
+    init();
 
     return () => {
+      isMounted = false;
       locationService.stopWatching();
     };
   }, []);
@@ -71,10 +91,10 @@ export default function HomeScreen() {
         setUserLocation(location);
         updateNearbyStops(location);
       } else {
-        // Use default Seattle location
+        // Use default Bothell location (user mentioned they live in Bothell)
         const defaultLocation = {
-          latitude: 47.609421,
-          longitude: -122.337631,
+          latitude: 47.7619, // Bothell
+          longitude: -122.2056,
           accuracy: 50,
         };
         setUserLocation(defaultLocation);
@@ -105,17 +125,23 @@ export default function HomeScreen() {
 
   const loadArrivalsForStop = async (stop) => {
     try {
-      if (!stop) return;
+      if (!stop) {
+        setArrivals([]);
+        return;
+      }
 
       // Get stop ID - handle both GTFS and OneBusAway formats
       const stopId = stop.stop_id || stop.id;
-      if (!stopId) return;
+      if (!stopId) {
+        setArrivals([]);
+        return;
+      }
 
       // Convert GTFS stop ID to OneBusAway format if needed
       // GTFS: "100275", OneBusAway: "1_100275"
-      let obaStopId = stopId;
-      if (!stopId.includes('_')) {
-        obaStopId = `1_${stopId}`;
+      let obaStopId = String(stopId);
+      if (!obaStopId.includes('_')) {
+        obaStopId = `1_${obaStopId}`;
       }
 
       // Check if OneBusAway is configured
@@ -131,14 +157,19 @@ export default function HomeScreen() {
       });
 
       // Enhance arrivals with reliability data
-      const enhancedArrivals = obaArrivals.map((arrival) => {
-        const routeReliability = reliabilityService.getRouteReliability(
-          arrival.routeId
-        );
-        return {
-          ...arrival,
-          reliability: routeReliability,
-        };
+      const enhancedArrivals = (obaArrivals || []).map((arrival) => {
+        try {
+          const routeReliability = reliabilityService.getRouteReliability(
+            arrival.routeId
+          );
+          return {
+            ...arrival,
+            reliability: routeReliability,
+          };
+        } catch (error) {
+          console.error('Error enhancing arrival:', error);
+          return arrival;
+        }
       });
 
       setArrivals(enhancedArrivals);

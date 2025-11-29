@@ -215,10 +215,11 @@ class LocationService {
   }
 
   /**
-   * Check if coordinates are within Seattle area
+   * Check if coordinates are within King County Metro service area
+   * Includes: Seattle, Bothell, Lynnwood, Bellevue, Redmond, Renton, Kent, etc.
    * @param {number} lat - Latitude
    * @param {number} lon - Longitude
-   * @returns {boolean} True if within Seattle bounds
+   * @returns {boolean} True if within King County Metro service area
    */
   isInSeattleArea(lat, lon) {
     return (

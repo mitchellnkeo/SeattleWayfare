@@ -82,9 +82,10 @@ export const CACHE_DURATION = {
   reliability: 30 * 24 * 60 * 60 * 1000, // 30 days
 };
 
-// Seattle Area Bounds (for validation)
+// King County Metro Service Area Bounds (for validation)
+// Includes: Seattle, Bothell, Lynnwood, Bellevue, Redmond, Renton, Kent, etc.
 export const SEATTLE_BOUNDS = {
-  lat: { min: 47.4, max: 47.8 },
-  lon: { min: -122.5, max: -122.2 },
+  lat: { min: 47.2, max: 47.9 }, // South King County to North King County
+  lon: { min: -122.5, max: -121.8 }, // West to East King County
 };
 

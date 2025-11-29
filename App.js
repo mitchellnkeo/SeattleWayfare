@@ -50,16 +50,19 @@ export default function App() {
       let logOutput = '';
 
       console.log = (...args) => {
-        logOutput += args.join(' ') + '\n';
+        const message = args.map(arg => 
+          typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+        ).join(' ');
+        logOutput += message + '\n';
         originalLog(...args);
       };
 
       await testGTFSService();
 
       console.log = originalLog;
-      setTestResults(logOutput);
+      setTestResults(logOutput || 'Tests completed (check console for details)');
     } catch (error) {
-      setTestResults(`Test error: ${error.message}`);
+      setTestResults(`Test error: ${error.message}\n${error.stack}`);
     } finally {
       setIsLoading(false);
     }

@@ -87,7 +87,7 @@ export default function HomeScreen({ navigation }) {
 
       // Load saved commutes
       const commutes = await getSavedCommutes();
-      setSavedCommutes(commutes.slice(0, 3)); // Show up to 3 on home screen
+      setSavedCommutes((commutes || []).slice(0, 3)); // Show up to 3 on home screen
 
       // Initialize services
       await reliabilityService.initialize();

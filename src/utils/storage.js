@@ -142,7 +142,8 @@ export async function setGTFSDownloadDate(date) {
 
 // Saved Commutes storage helpers
 export async function getSavedCommutes() {
-  return getStorageItem(STORAGE_KEYS.SAVED_COMMUTES) || [];
+  const commutes = await getStorageItem(STORAGE_KEYS.SAVED_COMMUTES);
+  return Array.isArray(commutes) ? commutes : [];
 }
 
 export async function setSavedCommutes(commutes) {

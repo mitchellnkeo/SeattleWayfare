@@ -43,6 +43,13 @@ export default function SavedCommutesScreen({ navigation }) {
       setLoading(true);
       const savedCommutes = await getSavedCommutes();
       
+      if (!Array.isArray(savedCommutes) || savedCommutes.length === 0) {
+        setCommutes([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      
       // Enhance commutes with reliability data
       const enhancedCommutes = await Promise.all(
         savedCommutes.map(async (commute) => {

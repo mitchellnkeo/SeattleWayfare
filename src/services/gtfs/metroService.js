@@ -23,6 +23,7 @@ import {
   setGTFSDownloadDate,
 } from '../../utils/storage';
 import { GTFS_URLS, CACHE_DURATION } from '../../utils/constants';
+import { gtfsToObaStopId } from '../../utils/idMapping';
 
 // Lazy import to avoid circular dependency
 let obaService = null;
@@ -509,8 +510,12 @@ class MetroGTFSService {
         return [];
       }
 
+      // Convert GTFS stop ID to OneBusAway format (e.g., "13090" -> "1_13090")
+      const obaStopId = gtfsToObaStopId(stopId);
+      console.log(`🔄 Converting stop ID: ${stopId} -> ${obaStopId}`);
+
       // Get arrivals for this stop to find which routes serve it
-      const arrivals = await oba.getArrivalsForStop(stopId, {
+      const arrivals = await oba.getArrivalsForStop(obaStopId, {
         minutesAfter: 60,
         useCache: true,
       });

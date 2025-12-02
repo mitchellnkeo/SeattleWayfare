@@ -25,6 +25,8 @@ import locationService from '../services/location/locationService';
 import metroService from '../services/gtfs/metroService';
 import reliabilityService from '../services/reliability/reliabilityService';
 import obaService from '../services/onebusaway/obaService';
+import geocodingService from '../services/geocoding/geocodingService';
+import tripRoutingService from '../services/routing/tripRoutingService';
 
 export default function TripPlannerScreen({ navigation, route }) {
   try {
@@ -206,238 +208,43 @@ export default function TripPlannerScreen({ navigation, route }) {
     setItineraries([]);
 
     try {
-      await metroService.initialize();
+      console.log('🗺️ Planning trip from:', origin, 'to:', destination);
       
-      // Use selected stops if available, otherwise search
-      let selectedOriginStop = originStop;
-      let selectedDestStop = destinationStop;
+      // Determine if inputs are addresses or stops
+      const originIsAddress = geocodingService.looksLikeAddress(origin) || !originStop;
+      const destIsAddress = geocodingService.looksLikeAddress(destination) || !destinationStop;
       
-      if (!selectedOriginStop) {
-        const originStops = await searchStops(origin);
-        if (originStops.length === 0) {
-          setError('Could not find stops matching your origin');
-          setLoading(false);
-          return;
+      // Build location objects for routing service
+      const originLocation = originStop 
+        ? { stop: originStop }
+        : originIsAddress
+        ? { address: origin }
+        : { address: origin }; // Try as address first, fallback to stop search
+      
+      const destLocation = destinationStop
+        ? { stop: destinationStop }
+        : destIsAddress
+        ? { address: destination }
+        : { address: destination };
+
+      // Use the new routing service for multi-modal planning
+      const generatedItineraries = await tripRoutingService.planTrip(
+        originLocation,
+        destLocation,
+        {
+          mode,
+          maxWalkingDistance: 1000, // 1km max walking
+          maxResults: 5,
         }
-        selectedOriginStop = originStops[0];
-      }
-      
-      if (!selectedDestStop) {
-        const destStops = await searchStops(destination);
-        if (destStops.length === 0) {
-          setError('Could not find stops matching your destination');
-          setLoading(false);
-          return;
-        }
-        selectedDestStop = destStops[0];
-      }
-
-      const originStopObj = selectedOriginStop;
-      const destStopObj = selectedDestStop;
-
-      // Get routes serving these stops (now always async)
-      console.log('🔍 Finding routes for origin stop:', originStopObj.stop_id);
-      const originRoutes = await metroService.getRoutesForStop(originStopObj.stop_id);
-      console.log('🔍 Finding routes for destination stop:', destStopObj.stop_id);
-      const destRoutes = await metroService.getRoutesForStop(destStopObj.stop_id);
-      
-      console.log(`✅ Found ${originRoutes.length} routes for origin, ${destRoutes.length} routes for destination`);
-      
-      if (originRoutes.length === 0) {
-        setError(`No routes found serving ${originStopObj.stop_name || origin}. Try a different origin.`);
-        setLoading(false);
-        return;
-      }
-      
-      if (destRoutes.length === 0) {
-        setError(`No routes found serving ${destStopObj.stop_name || destination}. Try a different destination.`);
-        setLoading(false);
-        return;
-      }
-
-      // Find common routes (direct connection)
-      const commonRoutes = originRoutes.filter((route) =>
-        destRoutes.some((dr) => dr.route_id === route.route_id)
       );
 
-      // Generate simplified itineraries
-      const generatedItineraries = [];
-
-      // Direct route option
-      if (commonRoutes.length > 0) {
-        const route = commonRoutes[0];
-        const routeReliability = reliabilityService.getRouteReliability(route.route_id) || {
-          reliability: 'medium',
-          onTimePerformance: 0.7,
-          averageDelayMinutes: 5,
-        };
-        const now = Date.now();
-        const estimatedDuration = 30; // Simplified estimate
-
-        generatedItineraries.push({
-          id: 'direct-1',
-          startTime: now + 5 * 60000, // 5 min from now
-          endTime: now + (5 + estimatedDuration) * 60000,
-          duration: estimatedDuration,
-          walkTime: 5,
-          transitTime: estimatedDuration - 5,
-          waitingTime: 5,
-          legs: [
-            {
-              mode: 'WALK',
-              duration: 5,
-              distance: 400,
-            },
-            {
-              mode: 'BUS',
-              routeId: route.route_id,
-              routeShortName: route.route_short_name,
-              headsign: 'Destination',
-              duration: estimatedDuration - 10,
-              reliability: routeReliability,
-            },
-            {
-              mode: 'WALK',
-              duration: 5,
-              distance: 300,
-            },
-          ],
-          overallReliability: routeReliability?.reliability || 'medium',
-          transferRisks: [],
-          rank: 1,
-        });
+      if (generatedItineraries.length === 0) {
+        setError('No route options found. Try different origin or destination locations.');
+        setLoading(false);
+        return;
       }
 
-      // Transfer option (if no direct route)
-      if (commonRoutes.length === 0 && originRoutes.length > 0 && destRoutes.length > 0) {
-        const route1 = originRoutes[0];
-        const route2 = destRoutes[0];
-        const route1Reliability = reliabilityService.getRouteReliability(route1.route_id) || {
-          reliability: 'medium',
-          onTimePerformance: 0.7,
-          averageDelayMinutes: 5,
-        };
-        const route2Reliability = reliabilityService.getRouteReliability(route2.route_id) || {
-          reliability: 'medium',
-          onTimePerformance: 0.7,
-          averageDelayMinutes: 5,
-        };
-
-        const now = Date.now();
-        const leg1Duration = 20;
-        const leg2Duration = 15;
-        const transferTime = 5;
-        const totalDuration = leg1Duration + transferTime + leg2Duration;
-
-        // Calculate transfer risk
-        const firstArrival = {
-          routeId: route1.route_id,
-          predictedArrivalTime: now + (5 + leg1Duration) * 60000,
-          scheduledArrivalTime: now + (5 + leg1Duration) * 60000,
-        };
-        const secondDeparture = {
-          scheduledDepartureTime: now + (5 + leg1Duration + transferTime) * 60000,
-        };
-
-        const transferRisk = reliabilityService.calculateTransferRisk(
-          firstArrival,
-          secondDeparture,
-          2
-        );
-
-        const itineraryReliability = reliabilityService.calculateItineraryReliability([
-          {
-            mode: 'WALK',
-            duration: 5,
-          },
-          {
-            mode: 'BUS',
-            routeId: route1.route_id,
-            routeShortName: route1.route_short_name,
-            startTime: now + 5 * 60000,
-            endTime: now + (5 + leg1Duration) * 60000,
-            duration: leg1Duration,
-          },
-          {
-            mode: 'WALK',
-            duration: 2,
-          },
-          {
-            mode: 'BUS',
-            routeId: route2.route_id,
-            routeShortName: route2.route_short_name,
-            startTime: now + (5 + leg1Duration + transferTime) * 60000,
-            endTime: now + (5 + totalDuration) * 60000,
-            duration: leg2Duration,
-          },
-          {
-            mode: 'WALK',
-            duration: 5,
-          },
-        ]);
-
-        generatedItineraries.push({
-          id: 'transfer-1',
-          startTime: now + 5 * 60000,
-          endTime: now + (5 + totalDuration) * 60000,
-          duration: totalDuration,
-          walkTime: 12,
-          transitTime: leg1Duration + leg2Duration,
-          waitingTime: transferTime,
-          legs: [
-            {
-              mode: 'WALK',
-              duration: 5,
-              distance: 400,
-            },
-            {
-              mode: 'BUS',
-              routeId: route1.route_id,
-              routeShortName: route1.route_short_name,
-              headsign: 'Transfer Point',
-              duration: leg1Duration,
-              reliability: route1Reliability,
-            },
-            {
-              mode: 'WALK',
-              duration: 2,
-              distance: 150,
-            },
-            {
-              mode: 'BUS',
-              routeId: route2.route_id,
-              routeShortName: route2.route_short_name,
-              headsign: 'Destination',
-              duration: leg2Duration,
-              reliability: route2Reliability,
-            },
-            {
-              mode: 'WALK',
-              duration: 5,
-              distance: 300,
-            },
-          ],
-          overallReliability: itineraryReliability?.overallReliability || 'medium',
-          transferRisks: [transferRisk],
-          rank: 2,
-        });
-      }
-
-      // Sort by mode preference
-      if (mode === 'safe') {
-        generatedItineraries.sort((a, b) => {
-          const reliabilityOrder = { high: 3, medium: 2, low: 1 };
-          const aRel = typeof a.overallReliability === 'string' ? a.overallReliability : a.overallReliability?.reliability || 'medium';
-          const bRel = typeof b.overallReliability === 'string' ? b.overallReliability : b.overallReliability?.reliability || 'medium';
-          return (
-            (reliabilityOrder[bRel] || 2) - (reliabilityOrder[aRel] || 2) ||
-            (a.transferRisks?.length || 0) - (b.transferRisks?.length || 0) ||
-            a.duration - b.duration
-          );
-        });
-      } else {
-        generatedItineraries.sort((a, b) => a.duration - b.duration);
-      }
+      console.log(`✅ Generated ${generatedItineraries.length} trip options`);
 
       // Mark first as recommended
       if (generatedItineraries.length > 0) {
@@ -508,7 +315,7 @@ export default function TripPlannerScreen({ navigation, route }) {
                 <Ionicons name="location" size={20} color="#3B82F6" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="From (stop name or address)"
+                  placeholder="From (address or stop name)"
                   value={origin || ''}
                   onChangeText={(text) => {
                     try {
@@ -549,7 +356,7 @@ export default function TripPlannerScreen({ navigation, route }) {
                 <Ionicons name="location-outline" size={20} color="#EF4444" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="To (stop name or address)"
+                  placeholder="To (address or stop name)"
                   value={destination || ''}
                   onChangeText={(text) => {
                     try {

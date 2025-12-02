@@ -184,12 +184,19 @@ class MetroGTFSService {
         trips = null;
       }
       
+      // Skip stopTimes loading for now - it's causing crashes due to size
+      // We can load it lazily when needed instead
+      console.log('📦 Skipping stopTimes load (will load on-demand if needed)');
+      stopTimes = [];
+      
+      // Uncomment below to try loading stopTimes (may cause crash on large datasets)
+      /*
       try {
         console.log('📦 Loading stopTimes from storage...');
-        // StopTimes can be very large - load with timeout protection
+        // Use a very short timeout to prevent hanging
         const stopTimesPromise = getGTFSStopTimes();
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('StopTimes load timeout')), 30000)
+          setTimeout(() => reject(new Error('StopTimes load timeout')), 5000)
         );
         stopTimes = await Promise.race([stopTimesPromise, timeoutPromise]);
         console.log('📦 StopTimes loaded:', stopTimes ? stopTimes.length : 'null');
@@ -210,6 +217,7 @@ class MetroGTFSService {
         stopTimes = [];
         console.warn('⚠️ Continuing without stopTimes data');
       }
+      */
 
       // Allow partial data - we can work with routes, stops, and trips even without stopTimes
       if (routes && stops && trips) {
@@ -442,7 +450,13 @@ class MetroGTFSService {
       return [];
     }
 
-    // Find stop times for this stop
+    // Find stop times for this stop (if stopTimes is loaded)
+    if (!this.stopTimes || this.stopTimes.length === 0) {
+      console.warn('⚠️ StopTimes not loaded - using alternative method to find routes');
+      // Fallback: return empty array (can't determine routes without stopTimes)
+      return [];
+    }
+    
     const stopStopTimes = this.stopTimes.filter(
       (stopTime) => stopTime.stop_id === stopId
     );
@@ -501,7 +515,10 @@ class MetroGTFSService {
     if (!this.isLoaded) {
       return [];
     }
-
+    if (!this.stopTimes || this.stopTimes.length === 0) {
+      console.warn('⚠️ StopTimes not loaded - returning empty array');
+      return [];
+    }
     return this.stopTimes
       .filter((stopTime) => stopTime.trip_id === tripId)
       .sort((a, b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));

@@ -213,19 +213,80 @@ class MetroGTFSService {
    * @returns {Promise<boolean>} Success status
    */
   async initialize() {
-    // Try to load from storage first
-    const loaded = await this.loadFromStorage();
+    try {
+      console.log('📦 MetroService.initialize() starting...');
+      
+      // Try to load from storage first
+      let loaded = false;
+      try {
+        loaded = await this.loadFromStorage();
+        console.log('📦 loadFromStorage result:', loaded);
+      } catch (loadError) {
+        console.error('❌ Error in loadFromStorage:', loadError);
+        console.error('Load error details:', {
+          message: loadError?.message,
+          stack: loadError?.stack,
+          name: loadError?.name
+        });
+        loaded = false;
+      }
 
-    if (!loaded) {
-      // No data in storage, fetch it (will use cache on web)
-      console.log('No GTFS data in storage, fetching...');
-      return await this.fetchStaticData();
-    }
+      if (!loaded) {
+        // No data in storage, fetch it (will use cache on web)
+        console.log('No GTFS data in storage, fetching...');
+        try {
+          const fetchResult = await this.fetchStaticData();
+          console.log('📦 fetchStaticData result:', fetchResult);
+          return fetchResult;
+        } catch (fetchError) {
+          console.error('❌ Error in fetchStaticData:', fetchError);
+          console.error('Fetch error details:', {
+            message: fetchError?.message,
+            stack: fetchError?.stack,
+            name: fetchError?.name
+          });
+          // Return false but don't crash
+          return false;
+        }
+      }
 
-    // On web, don't try to update in background (CORS will fail)
-    if (Platform.OS === 'web') {
-      console.log('✅ GTFS data loaded from cache (web platform)');
+      // On web, don't try to update in background (CORS will fail)
+      if (Platform.OS === 'web') {
+        console.log('✅ GTFS data loaded from cache (web platform)');
+        this.isLoaded = true; // Ensure isLoaded is set
+        return true;
+      }
+
+      // Check if update is needed (native platforms only)
+      try {
+        console.log('🔄 Checking if GTFS data needs update...');
+        const needsUpdate = await this.needsUpdate();
+        if (needsUpdate) {
+          console.log('GTFS data is stale, updating in background...');
+          // Update in background (don't wait)
+          this.fetchStaticData().catch((error) => {
+            console.error('Background GTFS update failed:', error);
+          });
+        } else {
+          console.log('✅ GTFS data is up to date');
+        }
+      } catch (updateCheckError) {
+        console.error('❌ Error checking if update needed:', updateCheckError);
+        // Continue anyway - we have data loaded
+      }
+      
+      this.isLoaded = true; // Ensure isLoaded is set
+      console.log('✅ MetroService.initialize() completed successfully');
       return true;
+    } catch (error) {
+      console.error('❌ Fatal error in MetroService.initialize():', error);
+      console.error('Initialize error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      });
+      // Don't throw - return false to indicate failure
+      return false;
     }
 
     // Check if update is needed (native platforms only)

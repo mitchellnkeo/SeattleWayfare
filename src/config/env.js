@@ -3,22 +3,25 @@
  * Loads environment variables with defaults
  * 
  * For OneBusAway API key:
- * 1. Request key from: oba_api_key@soundtransit.org
- * 2. Create .env file in project root (or set directly here for development)
- * 3. Add: OBA_API_KEY=your_key_here
+ * Option 1 (Recommended): Create .env file in project root with:
+ *   EXPO_PUBLIC_OBA_API_KEY=your_key_here
  * 
- * Note: For React Native, you may need to use react-native-dotenv or
- * set the API key directly in this file for development.
+ * Option 2: Set directly here for development (DO NOT COMMIT WITH REAL KEY)
+ *   const OBA_API_KEY_FROM_ENV = 'your_key_here';
+ * 
+ * Note: Expo uses EXPO_PUBLIC_ prefix for environment variables
  */
 
-// TODO: Replace with your actual API key or use environment variable loader
-// For now, set directly here for testing (DO NOT COMMIT WITH REAL KEY)
-const OBA_API_KEY_FROM_ENV = ''; // Set your key here or use env loader
+// Get API key from environment variable (EXPO_PUBLIC_ prefix for Expo)
+// Or set directly here for development (DO NOT COMMIT WITH REAL KEY)
+const OBA_API_KEY_FROM_ENV = process.env.EXPO_PUBLIC_OBA_API_KEY || '';
 
 const ENV = {
   // OneBusAway API
   OBA_API_KEY: OBA_API_KEY_FROM_ENV || '',
-  OBA_BASE_URL: 'https://api.pugetsound.onebusaway.org/api/where',
+  OBA_BASE_URL:
+    process.env.EXPO_PUBLIC_OBA_BASE_URL ||
+    'https://api.pugetsound.onebusaway.org/api/where',
 
   // Sound Transit
   ST_ALERTS_URL: 'https://s3.amazonaws.com/st-service-alerts-prod/alerts_pb.json',

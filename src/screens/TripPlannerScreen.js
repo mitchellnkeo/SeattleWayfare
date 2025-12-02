@@ -25,7 +25,11 @@ import metroService from '../services/gtfs/metroService';
 import reliabilityService from '../services/reliability/reliabilityService';
 
 export default function TripPlannerScreen({ navigation, route }) {
-  console.log('🚀 TripPlannerScreen rendering...', { hasNavigation: !!navigation, hasRoute: !!route });
+  try {
+    console.log('🚀 TripPlannerScreen rendering...', { hasNavigation: !!navigation, hasRoute: !!route });
+  } catch (e) {
+    console.error('Error in initial log:', e);
+  }
   
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -36,7 +40,11 @@ export default function TripPlannerScreen({ navigation, route }) {
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   
-  console.log('📊 TripPlannerScreen state:', { isInitialized, mode, origin, destination });
+  try {
+    console.log('📊 TripPlannerScreen state initialized');
+  } catch (e) {
+    console.error('Error logging state:', e);
+  }
 
   // Handle route params (if navigating from saved commutes)
   useEffect(() => {
@@ -75,14 +83,44 @@ export default function TripPlannerScreen({ navigation, route }) {
     const initServices = async () => {
       try {
         console.log('🔄 Initializing Trip Planner services...');
-        await reliabilityService.initialize();
-        await metroService.initialize();
+        
+        // Initialize reliability service first
+        if (reliabilityService) {
+          try {
+            console.log('📊 Initializing reliability service...');
+            await reliabilityService.initialize();
+            console.log('✅ Reliability service initialized');
+          } catch (reliabilityError) {
+            console.error('❌ Error initializing reliability service:', reliabilityError);
+            console.error('Reliability error stack:', reliabilityError?.stack);
+            // Continue even if reliability service fails
+          }
+        } else {
+          console.warn('⚠️ Reliability service not available');
+        }
+        
+        // Initialize metro service
+        if (metroService) {
+          try {
+            console.log('🚌 Initializing metro service...');
+            await metroService.initialize();
+            console.log('✅ Metro service initialized');
+          } catch (metroError) {
+            console.error('❌ Error initializing metro service:', metroError);
+            console.error('Metro error stack:', metroError?.stack);
+            // Continue even if metro service fails
+          }
+        } else {
+          console.warn('⚠️ Metro service not available');
+        }
+        
         if (isMounted) {
           setIsInitialized(true);
           console.log('✅ Trip Planner services initialized');
         }
       } catch (error) {
-        console.error('❌ Error initializing services:', error);
+        console.error('❌ Fatal error initializing services:', error);
+        console.error('Error stack:', error.stack);
         // Don't crash the app, just log the error
         if (isMounted) {
           setIsInitialized(true); // Set to true anyway so UI can render
@@ -90,10 +128,20 @@ export default function TripPlannerScreen({ navigation, route }) {
       }
     };
     
-    initServices();
+    // Use setTimeout with delay to ensure component is mounted before async operations
+    // Also wrap in try-catch to prevent unhandled promise rejections
+    const timeoutId = setTimeout(() => {
+      initServices().catch((err) => {
+        console.error('❌ Unhandled error in initServices:', err);
+        if (isMounted) {
+          setIsInitialized(true);
+        }
+      });
+    }, 50);
     
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
     };
   }, []);
 

@@ -152,35 +152,90 @@ class MetroGTFSService {
    */
   async loadFromStorage() {
     try {
-      const routes = await getGTFSRoutes();
-      const stops = await getGTFSStops();
-      const trips = await getGTFSTrips();
-      const stopTimes = await getGTFSStopTimes();
+      console.log('📦 loadFromStorage() starting...');
+      
+      let routes, stops, trips, stopTimes;
+      
+      // Load each data type separately with error handling
+      try {
+        console.log('📦 Loading routes from storage...');
+        routes = await getGTFSRoutes();
+        console.log('📦 Routes loaded:', routes ? routes.length : 'null');
+      } catch (routesError) {
+        console.error('❌ Error loading routes:', routesError);
+        routes = null;
+      }
+      
+      try {
+        console.log('📦 Loading stops from storage...');
+        stops = await getGTFSStops();
+        console.log('📦 Stops loaded:', stops ? stops.length : 'null');
+      } catch (stopsError) {
+        console.error('❌ Error loading stops:', stopsError);
+        stops = null;
+      }
+      
+      try {
+        console.log('📦 Loading trips from storage...');
+        trips = await getGTFSTrips();
+        console.log('📦 Trips loaded:', trips ? trips.length : 'null');
+      } catch (tripsError) {
+        console.error('❌ Error loading trips:', tripsError);
+        trips = null;
+      }
+      
+      try {
+        console.log('📦 Loading stopTimes from storage...');
+        stopTimes = await getGTFSStopTimes();
+        console.log('📦 StopTimes loaded:', stopTimes ? stopTimes.length : 'null');
+      } catch (stopTimesError) {
+        console.error('❌ Error loading stopTimes:', stopTimesError);
+        stopTimes = null;
+      }
 
       if (routes && stops && trips && stopTimes) {
+        // Validate data before assigning
+        if (!Array.isArray(routes) || !Array.isArray(stops) || !Array.isArray(trips) || !Array.isArray(stopTimes)) {
+          console.error('❌ Invalid data format in storage - expected arrays');
+          return false;
+        }
+        
+        console.log('📦 Assigning data to service...');
         this.routes = routes;
         this.stops = stops;
         this.trips = trips;
         this.stopTimes = stopTimes;
         this.isLoaded = true;
         
-        const downloadDate = await getGTFSDownloadDate();
-        if (downloadDate) {
-          const date = new Date(downloadDate);
-          console.log('📂 Loaded REAL GTFS data from cache');
-          console.log(`   Originally downloaded: ${date.toLocaleString()}`);
-          console.log(`   Routes: ${routes.length}, Stops: ${stops.length}`);
-          console.log(`   This is REAL data from King County Metro\n`);
-        } else {
-          console.log('📂 Loaded GTFS data from cache (no download date recorded)\n');
+        try {
+          const downloadDate = await getGTFSDownloadDate();
+          if (downloadDate) {
+            const date = new Date(downloadDate);
+            console.log('📂 Loaded REAL GTFS data from cache');
+            console.log(`   Originally downloaded: ${date.toLocaleString()}`);
+            console.log(`   Routes: ${routes.length}, Stops: ${stops.length}`);
+            console.log(`   This is REAL data from King County Metro\n`);
+          } else {
+            console.log('📂 Loaded GTFS data from cache (no download date recorded)\n');
+          }
+        } catch (dateError) {
+          console.error('❌ Error loading download date:', dateError);
+          // Continue anyway - we have the data
         }
+        
+        console.log('✅ loadFromStorage() completed successfully');
         return true;
       }
 
       console.log('⚠️  No GTFS data found in storage - will download from King County Metro\n');
       return false;
     } catch (error) {
-      console.error('Error loading GTFS from storage:', error);
+      console.error('❌ Fatal error in loadFromStorage():', error);
+      console.error('LoadFromStorage error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      });
       return false;
     }
   }

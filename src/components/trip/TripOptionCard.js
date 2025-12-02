@@ -63,13 +63,25 @@ export default function TripOptionCard({ itinerary, recommended = false, onPress
       </View>
 
       <View style={styles.reliabilityContainer}>
-        <ReliabilityBadge reliability={overallReliability} size="small" />
+        <ReliabilityBadge 
+          reliability={
+            typeof overallReliability === 'string' 
+              ? overallReliability 
+              : overallReliability?.reliability || 'medium'
+          } 
+          size="small" 
+        />
         <Text style={styles.reliabilityText}>
-          {overallReliability === 'high'
-            ? 'Most reliable'
-            : overallReliability === 'medium'
-            ? 'Moderately reliable'
-            : 'Less reliable'}
+          {(() => {
+            const rel = typeof overallReliability === 'string' 
+              ? overallReliability 
+              : overallReliability?.reliability || 'medium';
+            return rel === 'high'
+              ? 'Most reliable'
+              : rel === 'medium'
+              ? 'Moderately reliable'
+              : 'Less reliable';
+          })()}
         </Text>
       </View>
 
@@ -93,7 +105,14 @@ export default function TripOptionCard({ itinerary, recommended = false, onPress
                 <Text style={styles.legTime}>{leg.duration} min</Text>
               </View>
               {leg.reliability && (
-                <ReliabilityBadge reliability={leg.reliability.reliability} size="small" />
+                <ReliabilityBadge 
+                  reliability={
+                    typeof leg.reliability === 'string'
+                      ? leg.reliability
+                      : leg.reliability?.reliability || 'medium'
+                  } 
+                  size="small" 
+                />
               )}
             </View>
           );

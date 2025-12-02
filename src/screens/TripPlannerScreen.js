@@ -303,10 +303,15 @@ export default function TripPlannerScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
         style={styles.keyboardView}
+        enabled={Platform.OS !== 'web'}
       >
-        <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
@@ -325,8 +330,14 @@ export default function TripPlannerScreen({ navigation }) {
               <TextInput
                 style={styles.input}
                 placeholder="From (stop name or address)"
-                value={origin}
-                onChangeText={setOrigin}
+                value={origin || ''}
+                onChangeText={(text) => {
+                  try {
+                    setOrigin(text);
+                  } catch (error) {
+                    console.error('Error updating origin:', error);
+                  }
+                }}
                 placeholderTextColor="#9CA3AF"
               />
               <TouchableOpacity
@@ -342,8 +353,14 @@ export default function TripPlannerScreen({ navigation }) {
               <TextInput
                 style={styles.input}
                 placeholder="To (stop name or address)"
-                value={destination}
-                onChangeText={setDestination}
+                value={destination || ''}
+                onChangeText={(text) => {
+                  try {
+                    setDestination(text);
+                  } catch (error) {
+                    console.error('Error updating destination:', error);
+                  }
+                }}
                 placeholderTextColor="#9CA3AF"
               />
             </View>
@@ -417,6 +434,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   header: {
     flexDirection: 'row',

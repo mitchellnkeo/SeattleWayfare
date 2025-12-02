@@ -20,9 +20,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import RouteModeToggle from '../components/trip/RouteModeToggle';
 import TripOptionCard from '../components/trip/TripOptionCard';
+import StopAutocomplete from '../components/trip/StopAutocomplete';
 import locationService from '../services/location/locationService';
 import metroService from '../services/gtfs/metroService';
 import reliabilityService from '../services/reliability/reliabilityService';
+import obaService from '../services/onebusaway/obaService';
 
 export default function TripPlannerScreen({ navigation, route }) {
   try {
@@ -33,12 +35,16 @@ export default function TripPlannerScreen({ navigation, route }) {
   
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
+  const [originStop, setOriginStop] = useState(null); // Selected stop object
+  const [destinationStop, setDestinationStop] = useState(null); // Selected stop object
   const [mode, setMode] = useState('fast'); // 'fast' or 'safe'
   const [itineraries, setItineraries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
+  const [showDestSuggestions, setShowDestSuggestions] = useState(false);
   
   try {
     console.log('📊 TripPlannerScreen state initialized');
@@ -200,27 +206,38 @@ export default function TripPlannerScreen({ navigation, route }) {
     setItineraries([]);
 
     try {
-      // For now, create a simplified trip plan
-      // In a full implementation, this would use a routing API
-      // This is a placeholder that shows the structure
-
-      // Find origin and destination stops
       await metroService.initialize();
-      const originStops = await searchStops(origin);
-      const destStops = await searchStops(destination);
-
-      if (originStops.length === 0 || destStops.length === 0) {
-        setError('Could not find stops matching your origin or destination');
-        setLoading(false);
-        return;
+      
+      // Use selected stops if available, otherwise search
+      let selectedOriginStop = originStop;
+      let selectedDestStop = destinationStop;
+      
+      if (!selectedOriginStop) {
+        const originStops = await searchStops(origin);
+        if (originStops.length === 0) {
+          setError('Could not find stops matching your origin');
+          setLoading(false);
+          return;
+        }
+        selectedOriginStop = originStops[0];
+      }
+      
+      if (!selectedDestStop) {
+        const destStops = await searchStops(destination);
+        if (destStops.length === 0) {
+          setError('Could not find stops matching your destination');
+          setLoading(false);
+          return;
+        }
+        selectedDestStop = destStops[0];
       }
 
-      const originStop = originStops[0];
-      const destStop = destStops[0];
+      const originStopObj = selectedOriginStop;
+      const destStopObj = selectedDestStop;
 
       // Get routes serving these stops
-      const originRoutes = metroService.getRoutesForStop(originStop.stop_id);
-      const destRoutes = metroService.getRoutesForStop(destStop.stop_id);
+      const originRoutes = metroService.getRoutesForStop(originStopObj.stop_id);
+      const destRoutes = metroService.getRoutesForStop(destStopObj.stop_id);
 
       // Find common routes (direct connection)
       const commonRoutes = originRoutes.filter((route) =>
@@ -470,43 +487,79 @@ export default function TripPlannerScreen({ navigation, route }) {
 
           {/* Input Section */}
           <View style={styles.inputSection}>
-            <View style={styles.inputContainer}>
-              <Ionicons name="location" size={20} color="#3B82F6" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="From (stop name or address)"
-                value={origin || ''}
-                onChangeText={(text) => {
-                  try {
-                    setOrigin(text);
-                  } catch (error) {
-                    console.error('Error updating origin:', error);
-                  }
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputContainer}>
+                <Ionicons name="location" size={20} color="#3B82F6" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="From (stop name or address)"
+                  value={origin || ''}
+                  onChangeText={(text) => {
+                    try {
+                      setOrigin(text);
+                      setShowOriginSuggestions(true);
+                      setOriginStop(null); // Clear selected stop when typing
+                    } catch (error) {
+                      console.error('Error updating origin:', error);
+                    }
+                  }}
+                  onFocus={() => setShowOriginSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowOriginSuggestions(false), 200)}
+                  placeholderTextColor="#9CA3AF"
+                />
+                <TouchableOpacity
+                  onPress={handleUseCurrentLocation}
+                  style={styles.currentLocationButton}
+                >
+                  <Ionicons name="locate" size={18} color="#3B82F6" />
+                </TouchableOpacity>
+              </View>
+              <StopAutocomplete
+                value={origin}
+                onChangeText={setOrigin}
+                onSelectStop={(stop) => {
+                  setOriginStop(stop);
+                  setShowOriginSuggestions(false);
                 }}
-                placeholderTextColor="#9CA3AF"
+                placeholder="From"
+                iconName="location"
+                iconColor="#3B82F6"
+                showSuggestions={showOriginSuggestions && origin.length >= 2}
               />
-              <TouchableOpacity
-                onPress={handleUseCurrentLocation}
-                style={styles.currentLocationButton}
-              >
-                <Ionicons name="locate" size={18} color="#3B82F6" />
-              </TouchableOpacity>
             </View>
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="location-outline" size={20} color="#EF4444" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="To (stop name or address)"
-                value={destination || ''}
-                onChangeText={(text) => {
-                  try {
-                    setDestination(text);
-                  } catch (error) {
-                    console.error('Error updating destination:', error);
-                  }
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputContainer}>
+                <Ionicons name="location-outline" size={20} color="#EF4444" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="To (stop name or address)"
+                  value={destination || ''}
+                  onChangeText={(text) => {
+                    try {
+                      setDestination(text);
+                      setShowDestSuggestions(true);
+                      setDestinationStop(null); // Clear selected stop when typing
+                    } catch (error) {
+                      console.error('Error updating destination:', error);
+                    }
+                  }}
+                  onFocus={() => setShowDestSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowDestSuggestions(false), 200)}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+              <StopAutocomplete
+                value={destination}
+                onChangeText={setDestination}
+                onSelectStop={(stop) => {
+                  setDestinationStop(stop);
+                  setShowDestSuggestions(false);
                 }}
-                placeholderTextColor="#9CA3AF"
+                placeholder="To"
+                iconName="location-outline"
+                iconColor="#EF4444"
+                showSuggestions={showDestSuggestions && destination.length >= 2}
               />
             </View>
 
@@ -626,6 +679,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     marginBottom: 16,
   },
+  inputWrapper: {
+    marginBottom: 12,
+    position: 'relative',
+    zIndex: 1,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -633,7 +691,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },

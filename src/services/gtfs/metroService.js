@@ -186,25 +186,50 @@ class MetroGTFSService {
       
       try {
         console.log('📦 Loading stopTimes from storage...');
-        stopTimes = await getGTFSStopTimes();
+        // StopTimes can be very large - load with timeout protection
+        const stopTimesPromise = getGTFSStopTimes();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('StopTimes load timeout')), 30000)
+        );
+        stopTimes = await Promise.race([stopTimesPromise, timeoutPromise]);
         console.log('📦 StopTimes loaded:', stopTimes ? stopTimes.length : 'null');
+        
+        // Validate stopTimes size to prevent memory issues
+        if (stopTimes && stopTimes.length > 1000000) {
+          console.warn('⚠️ StopTimes array is very large, this may cause memory issues');
+        }
       } catch (stopTimesError) {
         console.error('❌ Error loading stopTimes:', stopTimesError);
-        stopTimes = null;
+        console.error('StopTimes error details:', {
+          message: stopTimesError?.message,
+          stack: stopTimesError?.stack,
+          name: stopTimesError?.name
+        });
+        // If stopTimes fails, we can still work with other data
+        // Set to empty array instead of null to prevent crashes
+        stopTimes = [];
+        console.warn('⚠️ Continuing without stopTimes data');
       }
 
-      if (routes && stops && trips && stopTimes) {
+      // Allow partial data - we can work with routes, stops, and trips even without stopTimes
+      if (routes && stops && trips) {
         // Validate data before assigning
-        if (!Array.isArray(routes) || !Array.isArray(stops) || !Array.isArray(trips) || !Array.isArray(stopTimes)) {
+        if (!Array.isArray(routes) || !Array.isArray(stops) || !Array.isArray(trips)) {
           console.error('❌ Invalid data format in storage - expected arrays');
           return false;
+        }
+        
+        // Validate stopTimes if it exists, but allow it to be empty
+        if (stopTimes !== null && stopTimes !== undefined && !Array.isArray(stopTimes)) {
+          console.error('❌ Invalid stopTimes format - expected array or null');
+          stopTimes = []; // Use empty array as fallback
         }
         
         console.log('📦 Assigning data to service...');
         this.routes = routes;
         this.stops = stops;
         this.trips = trips;
-        this.stopTimes = stopTimes;
+        this.stopTimes = stopTimes || []; // Use empty array if stopTimes failed to load
         this.isLoaded = true;
         
         try {

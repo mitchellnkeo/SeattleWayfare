@@ -24,7 +24,9 @@ import locationService from '../services/location/locationService';
 import metroService from '../services/gtfs/metroService';
 import reliabilityService from '../services/reliability/reliabilityService';
 
-export default function TripPlannerScreen({ navigation }) {
+export default function TripPlannerScreen({ navigation, route }) {
+  console.log('🚀 TripPlannerScreen rendering...', { hasNavigation: !!navigation, hasRoute: !!route });
+  
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [mode, setMode] = useState('fast'); // 'fast' or 'safe'
@@ -32,11 +34,67 @@ export default function TripPlannerScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  console.log('📊 TripPlannerScreen state:', { isInitialized, mode, origin, destination });
+
+  // Handle route params (if navigating from saved commutes)
+  useEffect(() => {
+    try {
+      if (route && route.params) {
+        const { origin: routeOrigin, destination: routeDest, safeMode } = route.params;
+        if (routeOrigin) {
+          const originValue = typeof routeOrigin === 'string' 
+            ? routeOrigin 
+            : (routeOrigin?.name || routeOrigin?.address || '');
+          if (originValue) {
+            setOrigin(originValue);
+          }
+        }
+        if (routeDest) {
+          const destValue = typeof routeDest === 'string' 
+            ? routeDest 
+            : (routeDest?.name || routeDest?.address || '');
+          if (destValue) {
+            setDestination(destValue);
+          }
+        }
+        if (safeMode !== undefined) {
+          setMode(safeMode ? 'safe' : 'fast');
+        }
+      }
+    } catch (err) {
+      console.error('Error handling route params:', err);
+    }
+  }, [route]);
 
   useEffect(() => {
+    let isMounted = true;
+    
     // Initialize services
-    reliabilityService.initialize();
-    metroService.initialize();
+    const initServices = async () => {
+      try {
+        console.log('🔄 Initializing Trip Planner services...');
+        await reliabilityService.initialize();
+        await metroService.initialize();
+        if (isMounted) {
+          setIsInitialized(true);
+          console.log('✅ Trip Planner services initialized');
+        }
+      } catch (error) {
+        console.error('❌ Error initializing services:', error);
+        // Don't crash the app, just log the error
+        if (isMounted) {
+          setIsInitialized(true); // Set to true anyway so UI can render
+        }
+      }
+    };
+    
+    initServices();
+    
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleUseCurrentLocation = async () => {
@@ -127,7 +185,11 @@ export default function TripPlannerScreen({ navigation }) {
       // Direct route option
       if (commonRoutes.length > 0) {
         const route = commonRoutes[0];
-        const routeReliability = reliabilityService.getRouteReliability(route.route_id);
+        const routeReliability = reliabilityService.getRouteReliability(route.route_id) || {
+          reliability: 'medium',
+          onTimePerformance: 0.7,
+          averageDelayMinutes: 5,
+        };
         const now = Date.now();
         const estimatedDuration = 30; // Simplified estimate
 
@@ -159,7 +221,7 @@ export default function TripPlannerScreen({ navigation }) {
               distance: 300,
             },
           ],
-          overallReliability: routeReliability.reliability,
+          overallReliability: routeReliability?.reliability || 'medium',
           transferRisks: [],
           rank: 1,
         });
@@ -169,8 +231,16 @@ export default function TripPlannerScreen({ navigation }) {
       if (commonRoutes.length === 0 && originRoutes.length > 0 && destRoutes.length > 0) {
         const route1 = originRoutes[0];
         const route2 = destRoutes[0];
-        const route1Reliability = reliabilityService.getRouteReliability(route1.route_id);
-        const route2Reliability = reliabilityService.getRouteReliability(route2.route_id);
+        const route1Reliability = reliabilityService.getRouteReliability(route1.route_id) || {
+          reliability: 'medium',
+          onTimePerformance: 0.7,
+          averageDelayMinutes: 5,
+        };
+        const route2Reliability = reliabilityService.getRouteReliability(route2.route_id) || {
+          reliability: 'medium',
+          onTimePerformance: 0.7,
+          averageDelayMinutes: 5,
+        };
 
         const now = Date.now();
         const leg1Duration = 20;
@@ -266,7 +336,7 @@ export default function TripPlannerScreen({ navigation }) {
               distance: 300,
             },
           ],
-          overallReliability: itineraryReliability.overallReliability,
+          overallReliability: itineraryReliability?.overallReliability || 'medium',
           transferRisks: [transferRisk],
           rank: 2,
         });
@@ -276,9 +346,11 @@ export default function TripPlannerScreen({ navigation }) {
       if (mode === 'safe') {
         generatedItineraries.sort((a, b) => {
           const reliabilityOrder = { high: 3, medium: 2, low: 1 };
+          const aRel = typeof a.overallReliability === 'string' ? a.overallReliability : a.overallReliability?.reliability || 'medium';
+          const bRel = typeof b.overallReliability === 'string' ? b.overallReliability : b.overallReliability?.reliability || 'medium';
           return (
-            reliabilityOrder[b.overallReliability] - reliabilityOrder[a.overallReliability] ||
-            a.transferRisks.length - b.transferRisks.length ||
+            (reliabilityOrder[bRel] || 2) - (reliabilityOrder[aRel] || 2) ||
+            (a.transferRisks?.length || 0) - (b.transferRisks?.length || 0) ||
             a.duration - b.duration
           );
         });
@@ -300,12 +372,37 @@ export default function TripPlannerScreen({ navigation }) {
     }
   };
 
+  // Ensure navigation is available
+  if (!navigation) {
+    console.error('❌ Navigation prop is missing');
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>Navigation error. Please try again.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show loading state while initializing
+  if (!isInitialized) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#1E3A8A" />
+          <Text style={styles.loadingText}>Loading trip planner...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
         style={styles.keyboardView}
         enabled={Platform.OS !== 'web'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView 
           style={styles.scrollView} 
@@ -382,7 +479,20 @@ export default function TripPlannerScreen({ navigation }) {
           </View>
 
           {/* Mode Toggle */}
-          <RouteModeToggle mode={mode} onModeChange={setMode} />
+          {mode && (
+            <RouteModeToggle 
+              mode={mode} 
+              onModeChange={(newMode) => {
+                try {
+                  if (newMode === 'fast' || newMode === 'safe') {
+                    setMode(newMode);
+                  }
+                } catch (error) {
+                  console.error('Error changing mode:', error);
+                }
+              }} 
+            />
+          )}
 
           {/* Error Message */}
           {error && (
@@ -397,17 +507,27 @@ export default function TripPlannerScreen({ navigation }) {
               <Text style={styles.resultsTitle}>
                 {itineraries.length} Route Option{itineraries.length !== 1 ? 's' : ''} Found
               </Text>
-              {itineraries.map((itinerary) => (
-                <TripOptionCard
-                  key={itinerary.id}
-                  itinerary={itinerary}
-                  recommended={itinerary.recommended}
-                  onPress={() => {
-                    // Navigate to route detail (to be implemented)
-                    console.log('View itinerary:', itinerary.id);
-                  }}
-                />
-              ))}
+              {itineraries.map((itinerary, index) => {
+                if (!itinerary || !itinerary.id) {
+                  console.warn('Invalid itinerary at index', index, itinerary);
+                  return null;
+                }
+                return (
+                  <TripOptionCard
+                    key={itinerary.id || `itinerary-${index}`}
+                    itinerary={itinerary}
+                    recommended={itinerary.recommended || false}
+                    onPress={() => {
+                      try {
+                        // Navigate to route detail (to be implemented)
+                        console.log('View itinerary:', itinerary.id);
+                      } catch (err) {
+                        console.error('Error handling itinerary press:', err);
+                      }
+                    }}
+                  />
+                );
+              })}
             </View>
           )}
 
@@ -529,6 +649,23 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     marginTop: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  errorDetail: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#DC2626',
+    textAlign: 'center',
   },
 });
 

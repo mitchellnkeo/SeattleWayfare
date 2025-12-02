@@ -13,13 +13,28 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
  * @param {Function} onModeChange - Callback when mode changes
  */
 export default function RouteModeToggle({ mode = 'fast', onModeChange }) {
+  if (!onModeChange) {
+    console.warn('RouteModeToggle: onModeChange prop is missing');
+    return null;
+  }
+
+  const handleModeChange = (newMode) => {
+    try {
+      if (onModeChange && typeof onModeChange === 'function') {
+        onModeChange(newMode);
+      }
+    } catch (error) {
+      console.error('Error changing mode:', error);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Trip Mode:</Text>
       <View style={styles.toggleContainer}>
         <TouchableOpacity
           style={[styles.toggleButton, mode === 'fast' && styles.toggleButtonActive]}
-          onPress={() => onModeChange('fast')}
+          onPress={() => handleModeChange('fast')}
         >
           <Text style={[styles.toggleText, mode === 'fast' && styles.toggleTextActive]}>
             ⚡ Fast
@@ -27,7 +42,7 @@ export default function RouteModeToggle({ mode = 'fast', onModeChange }) {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.toggleButton, mode === 'safe' && styles.toggleButtonActive]}
-          onPress={() => onModeChange('safe')}
+          onPress={() => handleModeChange('safe')}
         >
           <Text style={[styles.toggleText, mode === 'safe' && styles.toggleTextActive]}>
             🛡️ Safe

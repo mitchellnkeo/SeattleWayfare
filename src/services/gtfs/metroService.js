@@ -24,6 +24,19 @@ import {
 } from '../../utils/storage';
 import { GTFS_URLS, CACHE_DURATION } from '../../utils/constants';
 
+// Lazy import to avoid circular dependency
+let obaService = null;
+function getObaService() {
+  if (!obaService) {
+    try {
+      obaService = require('../onebusaway/obaService').default;
+    } catch (e) {
+      console.warn('OneBusAway service not available:', e);
+    }
+  }
+  return obaService;
+}
+
 const GTFS_URL = GTFS_URLS.METRO_MAIN;
 
 class MetroGTFSService {
@@ -441,20 +454,21 @@ class MetroGTFSService {
   }
 
   /**
-   * Find routes serving a stop
-   * @param {string} stopId - Stop ID (e.g., "1_75403")
-   * @returns {Array} Array of route IDs
+   * Get routes serving a stop
+   * Uses stopTimes if available, otherwise falls back to OneBusAway API
+   * @param {string} stopId - Stop ID (GTFS format, e.g., "1_75403")
+   * @returns {Promise<Array>} Array of route objects
    */
-  getRoutesForStop(stopId) {
+  async getRoutesForStop(stopId) {
     if (!this.isLoaded) {
       return [];
     }
 
     // Find stop times for this stop (if stopTimes is loaded)
     if (!this.stopTimes || this.stopTimes.length === 0) {
-      console.warn('⚠️ StopTimes not loaded - using alternative method to find routes');
-      // Fallback: return empty array (can't determine routes without stopTimes)
-      return [];
+      console.log('📡 StopTimes not loaded - using OneBusAway API to find routes for stop:', stopId);
+      // Fallback: Use OneBusAway API to get routes for this stop
+      return await this._getRoutesForStopFromOBA(stopId);
     }
     
     const stopStopTimes = this.stopTimes.filter(
@@ -473,7 +487,60 @@ class MetroGTFSService {
       }
     });
 
-    return Array.from(routeIds);
+    // Convert route IDs to route objects
+    const routes = Array.from(routeIds)
+      .map((routeId) => this.getRouteById(routeId))
+      .filter(Boolean);
+    
+    return routes;
+  }
+
+  /**
+   * Get routes for a stop using OneBusAway API (fallback when stopTimes not loaded)
+   * @private
+   * @param {string} stopId - Stop ID in GTFS format
+   * @returns {Promise<Array>} Array of route IDs
+   */
+  async _getRoutesForStopFromOBA(stopId) {
+    try {
+      const oba = getObaService();
+      if (!oba || !oba.isConfigured()) {
+        console.warn('⚠️ OneBusAway API not available - cannot get routes for stop');
+        return [];
+      }
+
+      // Get arrivals for this stop to find which routes serve it
+      const arrivals = await oba.getArrivalsForStop(stopId, {
+        minutesAfter: 60,
+        useCache: true,
+      });
+
+      // Extract unique route IDs from arrivals
+      const routeIds = [...new Set(arrivals.map((arrival) => arrival.routeId))];
+      
+      // Convert to route objects using GTFS routes data
+      const routes = routeIds
+        .map((routeId) => {
+          // Try to find route in GTFS data
+          const gtfsRoute = this.routes.find((r) => r.route_id === routeId);
+          if (gtfsRoute) {
+            return gtfsRoute;
+          }
+          // If not found, create a minimal route object from OBA data
+          return {
+            route_id: routeId,
+            route_short_name: arrivals.find((a) => a.routeId === routeId)?.routeShortName || routeId,
+            route_long_name: '',
+          };
+        })
+        .filter(Boolean);
+
+      console.log(`✅ Found ${routes.length} routes for stop ${stopId} via OneBusAway API`);
+      return routes;
+    } catch (error) {
+      console.error('❌ Error getting routes from OneBusAway API:', error);
+      return [];
+    }
   }
 
   /**

@@ -235,9 +235,25 @@ export default function TripPlannerScreen({ navigation, route }) {
       const originStopObj = selectedOriginStop;
       const destStopObj = selectedDestStop;
 
-      // Get routes serving these stops
-      const originRoutes = metroService.getRoutesForStop(originStopObj.stop_id);
-      const destRoutes = metroService.getRoutesForStop(destStopObj.stop_id);
+      // Get routes serving these stops (now always async)
+      console.log('🔍 Finding routes for origin stop:', originStopObj.stop_id);
+      const originRoutes = await metroService.getRoutesForStop(originStopObj.stop_id);
+      console.log('🔍 Finding routes for destination stop:', destStopObj.stop_id);
+      const destRoutes = await metroService.getRoutesForStop(destStopObj.stop_id);
+      
+      console.log(`✅ Found ${originRoutes.length} routes for origin, ${destRoutes.length} routes for destination`);
+      
+      if (originRoutes.length === 0) {
+        setError(`No routes found serving ${originStopObj.stop_name || origin}. Try a different origin.`);
+        setLoading(false);
+        return;
+      }
+      
+      if (destRoutes.length === 0) {
+        setError(`No routes found serving ${destStopObj.stop_name || destination}. Try a different destination.`);
+        setLoading(false);
+        return;
+      }
 
       // Find common routes (direct connection)
       const commonRoutes = originRoutes.filter((route) =>

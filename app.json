@@ -50,6 +50,12 @@
           "color": "#1E3A8A"
         }
       ],
+      [
+        "expo-background-fetch",
+        {
+          "mode": "fetch"
+        }
+      ],
       "expo-font"
     ],
     "extra": {

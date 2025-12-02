@@ -231,6 +231,21 @@ export async function registerBackgroundFetch() {
   }
 
   try {
+    // Check if we're in Expo Go (background fetch doesn't work in Expo Go)
+    const isExpoGo = () => {
+      try {
+        const Constants = require('expo-constants').default;
+        return Constants?.executionEnvironment === 'storeClient';
+      } catch {
+        return false;
+      }
+    };
+
+    if (isExpoGo()) {
+      console.log('ℹ️ Background fetch requires a development build (not available in Expo Go)');
+      return false;
+    }
+
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK);
     
     if (isRegistered) {
@@ -247,7 +262,13 @@ export async function registerBackgroundFetch() {
     console.log('✅ Background fetch registered successfully');
     return true;
   } catch (error) {
-    console.error('❌ Error registering background fetch:', error);
+    // Don't show as error if it's just not available in Expo Go
+    const errorMessage = error?.message || '';
+    if (errorMessage.includes('not been configured') || errorMessage.includes('Expo Go')) {
+      console.log('ℹ️ Background fetch requires a development build (not available in Expo Go)');
+    } else {
+      console.warn('⚠️ Background fetch registration failed:', errorMessage);
+    }
     return false;
   }
 }

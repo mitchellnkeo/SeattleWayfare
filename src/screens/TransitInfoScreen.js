@@ -279,77 +279,76 @@ export default function TransitInfoScreen({ navigation }) {
       </View>
 
       {/* Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tabsContainer}
-        contentContainerStyle={styles.tabsContent}
-      >
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'routes' && styles.tabActive]}
-          onPress={() => setActiveTab('routes')}
-          activeOpacity={0.7}
+      <View style={styles.tabsContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsContent}
+          style={styles.tabsScrollView}
+          nestedScrollEnabled={true}
         >
-          <View style={styles.tabTextContainer}>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('routes')}
+            activeOpacity={0.7}
+          >
             <Text
               style={[
                 styles.tabText,
-                activeTab === 'routes' ? styles.tabTextActive : null,
+                activeTab === 'routes' ? styles.tabTextActive : styles.tabTextInactive,
               ]}
             >
               Routes ({routes.length})
             </Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'stops' && styles.tabActive]}
-          onPress={() => setActiveTab('stops')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.tabTextContainer}>
+            {activeTab === 'routes' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('stops')}
+            activeOpacity={0.7}
+          >
             <Text
               style={[
                 styles.tabText,
-                activeTab === 'stops' ? styles.tabTextActive : null,
+                activeTab === 'stops' ? styles.tabTextActive : styles.tabTextInactive,
               ]}
             >
               Stops ({stops.length})
             </Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'arrivals' && styles.tabActive]}
-          onPress={() => setActiveTab('arrivals')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.tabTextContainer}>
+            {activeTab === 'stops' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('arrivals')}
+            activeOpacity={0.7}
+          >
             <Text
               style={[
                 styles.tabText,
-                activeTab === 'arrivals' ? styles.tabTextActive : null,
+                activeTab === 'arrivals' ? styles.tabTextActive : styles.tabTextInactive,
               ]}
             >
               Arrivals
             </Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'alerts' && styles.tabActive]}
-          onPress={() => setActiveTab('alerts')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.tabTextContainer}>
+            {activeTab === 'arrivals' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tab}
+            onPress={() => setActiveTab('alerts')}
+            activeOpacity={0.7}
+          >
             <Text
               style={[
                 styles.tabText,
-                activeTab === 'alerts' ? styles.tabTextActive : null,
+                activeTab === 'alerts' ? styles.tabTextActive : styles.tabTextInactive,
               ]}
             >
               Alerts ({serviceAlerts.length})
             </Text>
-          </View>
-        </TouchableOpacity>
-      </ScrollView>
+            {activeTab === 'alerts' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
 
       {/* Content */}
       {activeTab === 'routes' && (
@@ -560,33 +559,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    height: 50,
+  },
+  tabsScrollView: {
+    flexGrow: 0,
   },
   tabsContent: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 8,
+    alignItems: 'center',
+    height: 50,
   },
   tab: {
     paddingVertical: 12,
     paddingHorizontal: 16,
     marginRight: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    minWidth: 80,
     justifyContent: 'center',
     alignItems: 'center',
+    height: 50,
+    position: 'relative',
   },
-  tabActive: {
-    borderBottomColor: '#3B82F6',
-  },
-  tabTextContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: '#3B82F6',
   },
   tabText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  tabTextInactive: {
     color: '#6B7280',
   },
   tabTextActive: {

@@ -101,8 +101,16 @@ class OneBusAwayService {
       });
 
       // Check for API errors in response
-      if (response.data.code && response.data.code !== 200) {
-        throw new Error(`OneBusAway API error: ${response.data.text || response.data.code}`);
+      if (!response || !response.data) {
+        throw new Error('OneBusAway API returned invalid response');
+      }
+
+      // Check if response has error code
+      if (response.data.code !== undefined && response.data.code !== null) {
+        if (response.data.code !== 200) {
+          const errorText = response.data.text || `Error code: ${response.data.code}`;
+          throw new Error(`OneBusAway API error: ${errorText}`);
+        }
       }
 
       return response;
@@ -145,8 +153,20 @@ class OneBusAwayService {
         CACHE_DURATION.arrivals
       );
 
-      if (!data.data || !data.data.entry) {
-        throw new Error('Invalid response from OneBusAway API');
+      if (!data) {
+        console.warn(`OneBusAway API returned null/undefined for stop ${stopId}`);
+        return [];
+      }
+
+      if (!data.data) {
+        console.warn(`OneBusAway API response missing data field for stop ${stopId}`);
+        return [];
+      }
+
+      if (!data.data.entry) {
+        // Some stops may not have arrivals - return empty array instead of error
+        console.log(`No arrivals data for stop ${stopId}`);
+        return [];
       }
 
       const arrivals = data.data.entry.arrivalsAndDepartures || [];

@@ -167,11 +167,15 @@ export default function TransitInfoScreen({ navigation }) {
       setSelectedStop(stop);
       setActiveTab('arrivals');
     } catch (error) {
-      console.error('Error loading arrivals:', error);
+      // getArrivalsForStop now returns [] instead of throwing for most errors
+      // This catch is mainly for unexpected errors
+      console.warn('Error loading arrivals (non-critical):', error.message || error);
       // Set empty arrivals and show the stop anyway
       setStopArrivals([]);
       setSelectedStop(stop);
       setActiveTab('arrivals');
+      // Clear error state - missing arrivals is not a critical error
+      setError(null);
     }
   };
 

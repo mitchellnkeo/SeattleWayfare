@@ -95,20 +95,51 @@ class OneBusAwayService {
         key: this.apiKey,
       };
 
-      const response = await axios.get(url, {
-        params: requestParams,
-        timeout: 10000, // 10 second timeout
-      });
-
-      // Check for API errors in response
-      if (!response || !response.data) {
-        throw new Error('OneBusAway API returned invalid response');
+      let response;
+      try {
+        response = await axios.get(url, {
+          params: requestParams,
+          timeout: 10000, // 10 second timeout
+        });
+      } catch (axiosError) {
+        // Handle network errors, timeouts, etc.
+        if (axiosError.response) {
+          // Server responded with error status
+          console.warn(`OneBusAway API HTTP error: ${axiosError.response.status} for ${endpoint}`);
+          throw new Error(`OneBusAway API HTTP error: ${axiosError.response.status}`);
+        } else if (axiosError.request) {
+          // Request made but no response
+          console.warn(`OneBusAway API no response for ${endpoint}`);
+          throw new Error('OneBusAway API no response (network error)');
+        } else {
+          // Error setting up request
+          console.warn(`OneBusAway API request error for ${endpoint}:`, axiosError.message);
+          throw new Error(`OneBusAway API request error: ${axiosError.message}`);
+        }
       }
 
-      // Check if response has error code
+      // Check for API errors in response
+      if (!response) {
+        console.warn(`OneBusAway API returned null response for ${endpoint}`);
+        throw new Error('OneBusAway API returned null response');
+      }
+
+      if (!response.data) {
+        console.warn(`OneBusAway API returned response without data for ${endpoint}`);
+        throw new Error('OneBusAway API returned invalid response (no data)');
+      }
+
+      // Check if response has error code (OneBusAway API format)
       if (response.data.code !== undefined && response.data.code !== null) {
         if (response.data.code !== 200) {
           const errorText = response.data.text || `Error code: ${response.data.code}`;
+          // Log the error but don't throw for non-critical errors (e.g., stop not found)
+          if (response.data.code === 404) {
+            console.log(`OneBusAway API: Stop/route not found (404) for ${endpoint}`);
+            // Return a response that indicates no data
+            return { data: { code: 404, text: 'Not found', data: null } };
+          }
+          console.warn(`OneBusAway API error (${response.data.code}): ${errorText} for ${endpoint}`);
           throw new Error(`OneBusAway API error: ${errorText}`);
         }
       }
@@ -155,6 +186,12 @@ class OneBusAwayService {
 
       if (!data) {
         console.warn(`OneBusAway API returned null/undefined for stop ${stopId}`);
+        return [];
+      }
+
+      // Handle 404 responses (stop not found)
+      if (data.code === 404 || (data.data && data.data.code === 404)) {
+        console.log(`Stop ${stopId} not found in OneBusAway API`);
         return [];
       }
 
@@ -213,7 +250,9 @@ class OneBusAwayService {
       });
     } catch (error) {
       console.error('Error fetching arrivals for stop:', stopId, error);
-      throw error;
+      // Return empty array instead of throwing to prevent app crashes
+      // The error is already logged above
+      return [];
     }
   }
 

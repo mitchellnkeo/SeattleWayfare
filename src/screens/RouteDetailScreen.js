@@ -90,7 +90,8 @@ export default function RouteDetailScreen({ route, navigation }) {
             routeId: routeInfo.route_id,
           });
 
-          const enhancedArrivals = stopArrivals.map((arrival) => ({
+          // getArrivalsForStop now returns [] on error, so we can safely use it
+          const enhancedArrivals = (stopArrivals || []).map((arrival) => ({
             ...arrival,
             reliability,
           }));
@@ -98,7 +99,9 @@ export default function RouteDetailScreen({ route, navigation }) {
           setArrivals(enhancedArrivals);
           setSelectedStop(routeStops[0]);
         } catch (err) {
-          console.error('Error loading arrivals:', err);
+          // Error already handled in getArrivalsForStop, just log for debugging
+          console.warn('Error loading arrivals (non-critical):', err.message || err);
+          setArrivals([]); // Set empty array on error
         }
       }
 
@@ -139,7 +142,9 @@ export default function RouteDetailScreen({ route, navigation }) {
 
         setArrivals(enhancedArrivals);
       } catch (err) {
-        console.error('Error loading arrivals for stop:', err);
+        // Error already handled in getArrivalsForStop, just log for debugging
+        console.warn('Error loading arrivals for stop (non-critical):', err.message || err);
+        setArrivals([]); // Set empty array on error
       }
     }
   };

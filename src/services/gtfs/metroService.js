@@ -23,7 +23,7 @@ import {
   setGTFSDownloadDate,
 } from '../../utils/storage';
 import { GTFS_URLS, CACHE_DURATION } from '../../utils/constants';
-import { gtfsToObaStopId } from '../../utils/idMapping';
+import { gtfsToObaStopId, gtfsToObaRouteId, obaToGtfsStopId } from '../../utils/idMapping';
 
 // Lazy import to avoid circular dependency
 let obaService = null;
@@ -430,28 +430,110 @@ class MetroGTFSService {
 
   /**
    * Get stops for a specific route
+   * Uses stopTimes if available, otherwise falls back to OneBusAway API
    * @param {string} routeId - Route ID
-   * @returns {Array} Array of stop objects
+   * @returns {Promise<Array>} Array of stop objects
    */
-  getStopsForRoute(routeId) {
+  async getStopsForRoute(routeId) {
     if (!this.isLoaded) {
       return [];
     }
 
-    // Find trips for this route
-    const routeTrips = this.trips.filter((trip) => trip.route_id === routeId);
-    const tripIds = routeTrips.map((trip) => trip.trip_id);
+    // If stopTimes is loaded, use it
+    if (this.stopTimes && this.stopTimes.length > 0) {
+      // Find trips for this route
+      const routeTrips = this.trips.filter((trip) => trip.route_id === routeId);
+      const tripIds = routeTrips.map((trip) => trip.trip_id);
 
-    // Find stop times for these trips
-    const routeStopTimes = this.stopTimes.filter((stopTime) =>
-      tripIds.includes(stopTime.trip_id)
-    );
+      // Find stop times for these trips
+      const routeStopTimes = this.stopTimes.filter((stopTime) =>
+        tripIds.includes(stopTime.trip_id)
+      );
 
-    // Get unique stop IDs
-    const stopIds = [...new Set(routeStopTimes.map((st) => st.stop_id))];
+      // Get unique stop IDs
+      const stopIds = [...new Set(routeStopTimes.map((st) => st.stop_id))];
 
-    // Get stop objects
-    return this.stops.filter((stop) => stopIds.includes(stop.stop_id));
+      // Get stop objects
+      return this.stops.filter((stop) => stopIds.includes(stop.stop_id));
+    }
+
+    // Fallback: Use OneBusAway API to find stops for this route
+    console.log('📡 StopTimes not loaded - using OneBusAway API to find stops for route:', routeId);
+    return await this._getStopsForRouteFromOBA(routeId);
+  }
+
+  /**
+   * Get stops for a route using OneBusAway API
+   * @private
+   * @param {string} routeId - Route ID (GTFS format)
+   * @returns {Promise<Array>} Array of stop objects
+   */
+  async _getStopsForRouteFromOBA(routeId) {
+    try {
+      const oba = getObaService();
+      if (!oba || !oba.isConfigured()) {
+        console.warn('⚠️ OneBusAway API not available - cannot get stops for route');
+        return [];
+      }
+
+      // Convert GTFS route ID to OBA format
+      const obaRouteId = gtfsToObaRouteId(routeId);
+
+      // Strategy: Get stops near multiple locations across the service area
+      // and filter by route. This is a workaround since OBA doesn't have a direct
+      // "stops-for-route" endpoint.
+      const searchLocations = [
+        { lat: 47.6062, lon: -122.3321 }, // Downtown Seattle
+        { lat: 47.6205, lon: -122.3493 }, // North Seattle
+        { lat: 47.6097, lon: -122.3331 }, // Capitol Hill
+        { lat: 47.5515, lon: -122.3033 }, // South Seattle
+      ];
+
+      const allStops = new Map(); // Use Map to deduplicate by stop_id
+
+      for (const location of searchLocations) {
+        try {
+          const stops = await oba.getStopsNearLocation(location.lat, location.lon, 2000); // 2km radius
+          
+          // Filter stops that serve this route
+          const routeStops = stops.filter((stop) => 
+            stop.routeIds && stop.routeIds.includes(obaRouteId)
+          );
+
+          // Convert OBA stop format to GTFS format and add to map
+          routeStops.forEach((obaStop) => {
+            const gtfsStopId = obaToGtfsStopId(obaStop.id);
+            if (!allStops.has(gtfsStopId)) {
+              // Try to find matching stop in GTFS data
+              const gtfsStop = this.stops.find((s) => s.stop_id === gtfsStopId);
+              if (gtfsStop) {
+                allStops.set(gtfsStopId, gtfsStop);
+              } else {
+                // Create a stop object from OBA data
+                allStops.set(gtfsStopId, {
+                  stop_id: gtfsStopId,
+                  stop_name: obaStop.name || 'Unknown Stop',
+                  stop_code: obaStop.code || '',
+                  stop_lat: obaStop.lat,
+                  stop_lon: obaStop.lon,
+                  location_type: obaStop.locationType || 0,
+                });
+              }
+            }
+          });
+        } catch (error) {
+          console.warn(`⚠️ Error getting stops near ${location.lat},${location.lon}:`, error);
+          // Continue with other locations
+        }
+      }
+
+      const stopsArray = Array.from(allStops.values());
+      console.log(`✅ Found ${stopsArray.length} stops for route ${routeId} via OneBusAway API`);
+      return stopsArray;
+    } catch (error) {
+      console.error('❌ Error getting stops from OneBusAway API:', error);
+      return [];
+    }
   }
 
   /**

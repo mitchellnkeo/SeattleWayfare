@@ -286,6 +286,11 @@ export default function TransitInfoScreen({ navigation }) {
           contentContainerStyle={styles.tabsContent}
           style={styles.tabsScrollView}
           nestedScrollEnabled={true}
+          scrollEnabled={true}
+          directionalLockEnabled={true}
+          alwaysBounceHorizontal={false}
+          alwaysBounceVertical={false}
+          bounces={false}
         >
           <TouchableOpacity
             style={styles.tab}
@@ -560,9 +565,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
     height: 50,
+    overflow: 'hidden', // Prevent content from overflowing
   },
   tabsScrollView: {
     flexGrow: 0,
+    height: 50, // Fixed height
   },
   tabsContent: {
     flexDirection: 'row',

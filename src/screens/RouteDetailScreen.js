@@ -66,8 +66,8 @@ export default function RouteDetailScreen({ route, navigation }) {
 
       setRouteData(routeInfo);
 
-      // Get stops for this route
-      const routeStops = metroService.getStopsForRoute(routeInfo.route_id);
+      // Get stops for this route (now async with OneBusAway fallback)
+      const routeStops = await metroService.getStopsForRoute(routeInfo.route_id);
       setStops(routeStops);
 
       // Get reliability data

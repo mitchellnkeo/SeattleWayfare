@@ -118,6 +118,34 @@ export default function RouteMap({ routeId, stops = [], route }) {
     );
   }
 
+  // If we have stops but no region yet, keep loading
+  if (stops && stops.length > 0 && !region) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Loading route map...</Text>
+      </View>
+    );
+  }
+
+  // If no stops available, show message
+  if (!stops || stops.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.fallbackContainer}>
+          <Text style={styles.fallbackTitle}>Route Map</Text>
+          <Text style={styles.fallbackText}>
+            Stop information not available for this route.
+          </Text>
+          <Text style={styles.fallbackSubtext}>
+            This may be because stop data is still loading or the route has no active stops.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // If map not ready but we have stops and region, show loading
   if (!mapReady || !region) {
     return (
       <View style={styles.container}>
@@ -238,7 +266,12 @@ const styles = StyleSheet.create({
   fallbackText: {
     fontSize: 14,
     color: '#6B7280',
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  fallbackSubtext: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
   },
   stopsList: {
     maxHeight: 200,

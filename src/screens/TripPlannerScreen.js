@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import RouteModeToggle from '../components/trip/RouteModeToggle';
 import TripOptionCard from '../components/trip/TripOptionCard';
 import LocationAutocomplete from '../components/trip/LocationAutocomplete';
+import TripRouteMap from '../components/trip/TripRouteMap';
 import locationService from '../services/location/locationService';
 import metroService from '../services/gtfs/metroService';
 import reliabilityService from '../services/reliability/reliabilityService';
@@ -47,6 +48,8 @@ export default function TripPlannerScreen({ navigation, route }) {
   const [error, setError] = useState(null);
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [selectedItinerary, setSelectedItinerary] = useState(null);
+  const [currentUserLocation, setCurrentUserLocation] = useState(null);
   
   try {
     console.log('📊 TripPlannerScreen state initialized');
@@ -407,8 +410,9 @@ export default function TripPlannerScreen({ navigation, route }) {
                     recommended={itinerary.recommended || false}
                     onPress={() => {
                       try {
-                        // Navigate to route detail (to be implemented)
-                        console.log('View itinerary:', itinerary.id);
+                        // Select itinerary to show on map
+                        setSelectedItinerary(itinerary);
+                        // Scroll to map if needed
                       } catch (err) {
                         console.error('Error handling itinerary press:', err);
                       }
@@ -416,6 +420,17 @@ export default function TripPlannerScreen({ navigation, route }) {
                   />
                 );
               })}
+            </View>
+          )}
+
+          {/* Route Map - Show selected itinerary or first one */}
+          {!loading && itineraries.length > 0 && (selectedItinerary || itineraries[0]) && (
+            <View style={styles.mapSection}>
+              <TripRouteMap
+                itinerary={selectedItinerary || itineraries[0]}
+                userLocation={currentUserLocation}
+                height={300}
+              />
             </View>
           )}
 
@@ -520,6 +535,10 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#DC2626',
     fontSize: 14,
+  },
+  mapSection: {
+    marginBottom: 16,
+    marginHorizontal: 20,
   },
   resultsSection: {
     padding: 20,

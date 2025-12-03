@@ -314,6 +314,16 @@ class TripRoutingService {
               reliability,
               fromStop: originStop,
               toStop: destStop,
+              from: {
+                lat: originStop.stop_lat || originStop.lat,
+                lon: originStop.stop_lon || originStop.lon,
+                name: originStop.stop_name || originStop.name,
+              },
+              to: {
+                lat: destStop.stop_lat || destStop.lat,
+                lon: destStop.stop_lon || destStop.lon,
+                name: destStop.stop_name || destStop.name,
+              },
             },
           ],
           reliability: reliability.reliability,
@@ -388,28 +398,48 @@ class TripRoutingService {
         duration: totalDuration,
         waitTime: 5,
         legs: [
-          {
-            mode: 'BUS',
-            routeId: route1.route_id,
-            routeShortName: route1.route_short_name,
-            routeLongName: route1.route_long_name,
-            headsign: 'Transfer Point',
-            duration: leg1Duration,
-            reliability: route1Reliability,
-            fromStop: originStop,
-            toStop: null, // Transfer stop
-          },
-          {
-            mode: 'BUS',
-            routeId: route2.route_id,
-            routeShortName: route2.route_short_name,
-            routeLongName: route2.route_long_name,
-            headsign: destStop.stop_name || 'Destination',
-            duration: leg2Duration,
-            reliability: route2Reliability,
-            fromStop: null, // Transfer stop
-            toStop: destStop,
-          },
+            {
+              mode: 'BUS',
+              routeId: route1.route_id,
+              routeShortName: route1.route_short_name,
+              routeLongName: route1.route_long_name,
+              headsign: 'Transfer Point',
+              duration: leg1Duration,
+              reliability: route1Reliability,
+              fromStop: originStop,
+              toStop: originStop, // Simplified: use origin stop as transfer point
+              from: {
+                lat: originStop.stop_lat || originStop.lat,
+                lon: originStop.stop_lon || originStop.lon,
+                name: originStop.stop_name || originStop.name,
+              },
+              to: {
+                lat: originStop.stop_lat || originStop.lat,
+                lon: originStop.stop_lon || originStop.lon,
+                name: originStop.stop_name || originStop.name,
+              },
+            },
+            {
+              mode: 'BUS',
+              routeId: route2.route_id,
+              routeShortName: route2.route_short_name,
+              routeLongName: route2.route_long_name,
+              headsign: destStop.stop_name || 'Destination',
+              duration: leg2Duration,
+              reliability: route2Reliability,
+              fromStop: originStop, // Simplified: use origin stop as transfer point
+              toStop: destStop,
+              from: {
+                lat: originStop.stop_lat || originStop.lat,
+                lon: originStop.stop_lon || originStop.lon,
+                name: originStop.stop_name || originStop.name,
+              },
+              to: {
+                lat: destStop.stop_lat || destStop.lat,
+                lon: destStop.stop_lon || destStop.lon,
+                name: destStop.stop_name || destStop.name,
+              },
+            },
         ],
         reliability: route1Reliability.reliability === 'high' && route2Reliability.reliability === 'high' 
           ? 'high' 

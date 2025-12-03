@@ -244,16 +244,7 @@ export default function HomeScreen({ navigation }) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <Text style={styles.title}>Nearby Stops</Text>
-            <TouchableOpacity
-              style={styles.planTripButton}
-              onPress={() => navigation.navigate('TripPlanner')}
-            >
-              <Ionicons name="map" size={20} color="#FFFFFF" />
-              <Text style={styles.planTripButtonText}>Plan Trip</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.title}>Nearby Stops</Text>
           <Text style={styles.subtitle}>
             {nearbyStops.length} stop{nearbyStops.length !== 1 ? 's' : ''}{' '}
             within 500m
@@ -275,18 +266,8 @@ export default function HomeScreen({ navigation }) {
               <CommuteCard
                 key={commute.id}
                 commute={commute}
-                onPress={() => navigation.navigate('TripPlanner', {
-                  origin: commute.origin,
-                  destination: commute.destination,
-                  safeMode: commute.safeMode,
-                  preferredRoutes: commute.preferredRoutes,
-                })}
-                onLaunch={() => navigation.navigate('TripPlanner', {
-                  origin: commute.origin,
-                  destination: commute.destination,
-                  safeMode: commute.safeMode,
-                  preferredRoutes: commute.preferredRoutes,
-                })}
+                onPress={() => navigation.navigate('SavedCommutes')}
+                onLaunch={() => navigation.navigate('SavedCommutes')}
               />
             ))}
           </View>
@@ -423,31 +404,11 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 12,
   },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#111827',
-    flex: 1,
-  },
-  planTripButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E3A8A',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  planTripButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,

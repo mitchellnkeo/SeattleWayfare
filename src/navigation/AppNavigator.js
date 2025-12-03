@@ -7,7 +7,6 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from '../screens/HomeScreen';
-import TripPlannerScreen from '../screens/TripPlannerScreen';
 import RouteDetailScreen from '../screens/RouteDetailScreen';
 import SavedCommutesScreen from '../screens/SavedCommutesScreen';
 
@@ -34,14 +33,6 @@ export default function AppNavigator() {
           options={{
             title: 'Seattle Wayfare',
             headerShown: false, // HomeScreen has its own header
-          }}
-        />
-        <Stack.Screen
-          name="TripPlanner"
-          component={TripPlannerScreen}
-          options={{
-            title: 'Plan Trip',
-            headerShown: false, // TripPlannerScreen has its own header
           }}
         />
         <Stack.Screen

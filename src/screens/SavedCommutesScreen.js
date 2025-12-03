@@ -90,24 +90,18 @@ export default function SavedCommutesScreen({ navigation }) {
   };
 
   const handleLaunchTrip = (commute) => {
-    // Navigate to trip planner with commute data pre-filled
-    navigation.navigate('TripPlanner', {
-      origin: commute.origin,
-      destination: commute.destination,
-      safeMode: commute.safeMode,
-      preferredRoutes: commute.preferredRoutes,
-    });
-    
-    // Update last used
+    // Trip Planner removed - just update last used and navigate home
     updateSavedCommute(commute.id, { lastUsed: new Date().toISOString() });
+    navigation.navigate('Home');
   };
 
   const handleEdit = (commute) => {
-    // Navigate to edit screen (or trip planner in edit mode)
-    navigation.navigate('TripPlanner', {
-      editMode: true,
-      commute: commute,
-    });
+    // Trip Planner removed - show alert that editing is not available
+    Alert.alert(
+      'Edit Commute',
+      'Trip planning feature has been removed. You can delete and create a new commute instead.',
+      [{ text: 'OK' }]
+    );
   };
 
   const handleDelete = (commute) => {
@@ -134,9 +128,12 @@ export default function SavedCommutesScreen({ navigation }) {
   };
 
   const handleCreateNew = () => {
-    navigation.navigate('TripPlanner', {
-      createCommute: true,
-    });
+    // Trip Planner removed - show alert
+    Alert.alert(
+      'Create Commute',
+      'Trip planning feature has been removed. This feature is no longer available.',
+      [{ text: 'OK' }]
+    );
   };
 
   if (loading && commutes.length === 0) {

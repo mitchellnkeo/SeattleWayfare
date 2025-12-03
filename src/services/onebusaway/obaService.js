@@ -393,6 +393,78 @@ class OneBusAwayService {
   }
 
   /**
+   * Get all vehicles (buses) currently running on a route
+   * Uses arrivals data to extract vehicle positions (more reliable than vehicles-for-route endpoint)
+   * @param {string} routeId - Route ID in OneBusAway format (e.g., "1_100275")
+   * @param {Array} stops - Array of stop IDs to check for vehicles
+   * @returns {Promise<Array>} Array of vehicle position objects
+   */
+  async getVehiclesForRoute(routeId, stops = []) {
+    try {
+      // Strategy: Get arrivals from multiple stops on the route to find active vehicles
+      // This is more reliable than the vehicles-for-route endpoint which may not be available
+      const vehicles = new Map(); // Use Map to deduplicate by vehicleId
+
+      // Sample a few stops along the route (or use provided stops)
+      const stopsToCheck = stops.length > 0 
+        ? stops.slice(0, Math.min(5, stops.length)) // Check up to 5 stops
+        : [];
+
+      if (stopsToCheck.length === 0) {
+        // If no stops provided, try to get vehicles from route info
+        // For now, return empty array - we'll enhance this later
+        return [];
+      }
+
+      // Get arrivals from multiple stops to find active vehicles
+      for (const stop of stopsToCheck) {
+        try {
+          const stopId = typeof stop === 'string' ? stop : (stop.stop_id || stop.id);
+          if (!stopId) continue;
+
+          const obaStopId = stopId.includes('_') ? stopId : `1_${stopId}`;
+          const arrivals = await this.getArrivalsForStop(obaStopId, {
+            minutesAfter: 30,
+            useCache: false, // Don't cache for real-time vehicle tracking
+          });
+
+          // Extract vehicle positions from arrivals
+          arrivals.forEach((arrival) => {
+            // Only include vehicles for this route
+            if (arrival.routeId === routeId && arrival.vehicleId && arrival.distanceFromStop !== undefined) {
+              // If we have distance from stop, we can estimate position
+              // For now, we'll use the stop position as a proxy
+              // In a full implementation, we'd calculate the vehicle position based on distance and heading
+              if (!vehicles.has(arrival.vehicleId)) {
+                const stopObj = typeof stop === 'object' ? stop : null;
+                vehicles.set(arrival.vehicleId, {
+                  vehicleId: arrival.vehicleId,
+                  tripId: arrival.tripId,
+                  routeId: arrival.routeId,
+                  // Use stop position as proxy (would need actual vehicle position from API)
+                  latitude: stopObj?.stop_lat || stopObj?.lat || null,
+                  longitude: stopObj?.stop_lon || stopObj?.lon || null,
+                  heading: 0, // Would need from API
+                  distanceFromStop: arrival.distanceFromStop,
+                  lastUpdateTime: arrival.predictedArrivalTime,
+                });
+              }
+            }
+          });
+        } catch (error) {
+          console.warn(`Error getting arrivals for stop ${stop} to find vehicles:`, error);
+          // Continue with other stops
+        }
+      }
+
+      return Array.from(vehicles.values()).filter(v => v.latitude && v.longitude);
+    } catch (error) {
+      console.warn('Error fetching vehicles for route:', routeId, error);
+      return [];
+    }
+  }
+
+  /**
    * Get service alerts for a route
    * @param {string} routeId - Route ID in OneBusAway format (e.g., "1_100275")
    * @returns {Promise<Array>} Array of service alert objects

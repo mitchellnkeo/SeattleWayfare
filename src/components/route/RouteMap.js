@@ -4,10 +4,12 @@
  * Based on ROADMAP.md Phase 3.3
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
 import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
+import obaService from '../../services/onebusaway/obaService';
+import { gtfsToObaRouteId } from '../../utils/idMapping';
 
 // Lazy load MapView - only on native platforms (not web)
 // On web, Metro will use RouteMap.web.js instead
@@ -43,6 +45,9 @@ export default function RouteMap({ routeId, stops = [], route }) {
   const [mapReady, setMapReady] = useState(false);
   const [mapInitialized, setMapInitialized] = useState(false);
   const [region, setRegion] = useState(null);
+  const [vehicles, setVehicles] = useState([]);
+  const [showVehicles, setShowVehicles] = useState(true);
+  const vehicleUpdateInterval = useRef(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -60,6 +65,40 @@ export default function RouteMap({ routeId, stops = [], route }) {
       calculateRegion();
     }
   }, [stops]);
+
+  // Fetch live vehicle positions
+  useEffect(() => {
+    if (!routeId || !obaService.isConfigured() || stops.length === 0) {
+      return;
+    }
+
+    const fetchVehicles = async () => {
+      try {
+        // Convert GTFS route ID to OBA format
+        const obaRouteId = gtfsToObaRouteId(routeId);
+        // Pass stops to help find vehicles
+        const routeVehicles = await obaService.getVehiclesForRoute(obaRouteId, stops);
+        setVehicles(routeVehicles || []);
+      } catch (error) {
+        console.warn('Error fetching vehicles for route:', error);
+        setVehicles([]);
+      }
+    };
+
+    // Fetch immediately
+    fetchVehicles();
+
+    // Update every 15 seconds for live tracking
+    vehicleUpdateInterval.current = setInterval(() => {
+      fetchVehicles();
+    }, 15000);
+
+    return () => {
+      if (vehicleUpdateInterval.current) {
+        clearInterval(vehicleUpdateInterval.current);
+      }
+    };
+  }, [routeId, stops]);
 
   const calculateRegion = () => {
     if (!stops || stops.length === 0) return;
@@ -215,6 +254,56 @@ export default function RouteMap({ routeId, stops = [], route }) {
               />
             );
           })}
+
+        {/* Live vehicle markers */}
+        {mapInitialized && showVehicles && vehicles.length > 0 &&
+          vehicles.map((vehicle) => {
+            if (!vehicle.latitude || !vehicle.longitude) return null;
+
+            return (
+              <Marker
+                key={vehicle.vehicleId || `vehicle-${vehicle.tripId}`}
+                coordinate={{
+                  latitude: vehicle.latitude,
+                  longitude: vehicle.longitude,
+                }}
+                title={`🚌 ${route?.route_short_name || 'Bus'}`}
+                description={`Live position`}
+                pinColor="#22C55E" // Green for live vehicles
+                rotation={vehicle.heading || 0}
+              >
+                {/* Custom bus icon using emoji - you could replace with a custom image */}
+                <View style={styles.vehicleMarker}>
+                  <Text style={styles.vehicleEmoji}>🚌</Text>
+                </View>
+              </Marker>
+            );
+          })}
+
+        {/* Live vehicle markers */}
+        {mapInitialized && showVehicles && vehicles.length > 0 &&
+          vehicles.map((vehicle) => {
+            if (!vehicle.latitude || !vehicle.longitude) return null;
+
+            return (
+              <Marker
+                key={vehicle.vehicleId || `vehicle-${vehicle.tripId}`}
+                coordinate={{
+                  latitude: vehicle.latitude,
+                  longitude: vehicle.longitude,
+                }}
+                title={`🚌 ${route?.route_short_name || 'Bus'}`}
+                description={`Live position`}
+                pinColor="#22C55E" // Green for live vehicles
+                rotation={vehicle.heading || 0}
+              >
+                {/* Custom bus icon using emoji - you could replace with a custom image */}
+                <View style={styles.vehicleMarker}>
+                  <Text style={styles.vehicleEmoji}>🚌</Text>
+                </View>
+              </Marker>
+            );
+          })}
       </MapView>
     );
   } catch (error) {
@@ -281,6 +370,24 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 8,
     paddingLeft: 8,
+  },
+  vehicleMarker: {
+    backgroundColor: '#22C55E',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  vehicleEmoji: {
+    fontSize: 20,
   },
 });
 

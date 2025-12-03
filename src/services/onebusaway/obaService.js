@@ -43,12 +43,32 @@ async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
       return await fn();
     } catch (error) {
       lastError = error;
+      
+      // Don't retry on rate limit errors (429) - return empty data instead
+      if (error.message && (error.message.includes('429') || error.message.includes('Rate limit'))) {
+        console.warn(`Rate limit error - skipping retry and returning empty data`);
+        return { data: { code: 429, text: 'Rate limit exceeded', data: null } };
+      }
+      
+      // Don't retry on "no data" errors - return empty data instead
+      if (error.message && error.message.includes('no data')) {
+        console.warn(`No data error - skipping retry and returning empty data`);
+        return { data: { code: 200, data: null } };
+      }
+      
       if (attempt < maxRetries - 1) {
         console.warn(`Request failed, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay *= 2; // Exponential backoff
       }
     }
+  }
+
+  // For arrivals endpoints, return empty data instead of throwing
+  if (lastError && lastError.config && lastError.config.url && 
+      lastError.config.url.includes('arrivals-and-departures-for-stop')) {
+    console.warn(`All retries failed for arrivals endpoint - returning empty data`);
+    return { data: { code: 200, data: null } };
   }
 
   throw lastError;
@@ -105,8 +125,15 @@ class OneBusAwayService {
         // Handle network errors, timeouts, etc.
         if (axiosError.response) {
           // Server responded with error status
-          console.warn(`OneBusAway API HTTP error: ${axiosError.response.status} for ${endpoint}`);
-          throw new Error(`OneBusAway API HTTP error: ${axiosError.response.status}`);
+          const status = axiosError.response.status;
+          console.warn(`OneBusAway API HTTP error: ${status} for ${endpoint}`);
+          
+          // Include rate limit info in error message for retry function to catch
+          if (status === 429) {
+            throw new Error(`OneBusAway API HTTP error: 429 (Rate limit)`);
+          }
+          
+          throw new Error(`OneBusAway API HTTP error: ${status}`);
         } else if (axiosError.request) {
           // Request made but no response
           console.warn(`OneBusAway API no response for ${endpoint}`);
@@ -125,23 +152,42 @@ class OneBusAwayService {
       }
 
       if (!response.data) {
-        console.warn(`OneBusAway API returned response without data for ${endpoint}`);
-        throw new Error('OneBusAway API returned invalid response (no data)');
+        console.warn(`OneBusAway API returned response without data for ${endpoint} - returning empty data`);
+        // Return a valid response structure with null data instead of throwing
+        return { data: { code: 200, data: null } };
       }
 
       // Check if response has error code (OneBusAway API format)
       if (response.data.code !== undefined && response.data.code !== null) {
         if (response.data.code !== 200) {
           const errorText = response.data.text || `Error code: ${response.data.code}`;
-          // Log the error but don't throw for non-critical errors (e.g., stop not found)
+          // Handle specific error codes gracefully
           if (response.data.code === 404) {
             console.log(`OneBusAway API: Stop/route not found (404) for ${endpoint}`);
             // Return a response that indicates no data
             return { data: { code: 404, text: 'Not found', data: null } };
           }
+          if (response.data.code === 429) {
+            // Rate limit - return empty data instead of throwing
+            console.warn(`OneBusAway API rate limit (429) for ${endpoint} - using cached data if available`);
+            // Return a response that indicates rate limit
+            return { data: { code: 429, text: 'Rate limit exceeded', data: null } };
+          }
+          // For other errors, log but don't throw if it's a non-critical endpoint
+          if (endpoint.includes('arrivals-and-departures-for-stop')) {
+            console.warn(`OneBusAway API error (${response.data.code}): ${errorText} for ${endpoint} - returning empty data`);
+            return { data: { code: response.data.code, text: errorText, data: null } };
+          }
           console.warn(`OneBusAway API error (${response.data.code}): ${errorText} for ${endpoint}`);
           throw new Error(`OneBusAway API error: ${errorText}`);
         }
+      }
+
+      // Check if response.data exists but is empty or null
+      if (response.data && response.data.data === null) {
+        console.log(`OneBusAway API returned null data for ${endpoint}`);
+        // Return a valid response structure with null data
+        return { data: { code: 200, data: null } };
       }
 
       return response;
@@ -195,8 +241,15 @@ class OneBusAwayService {
         return [];
       }
 
-      if (!data.data) {
-        console.warn(`OneBusAway API response missing data field for stop ${stopId}`);
+      // Handle 429 rate limit responses
+      if (data.code === 429 || (data.data && data.data.code === 429)) {
+        console.warn(`Rate limit exceeded for stop ${stopId} - returning empty array`);
+        return [];
+      }
+
+      // Handle null or missing data
+      if (!data.data || data.data === null) {
+        console.log(`OneBusAway API returned null data for stop ${stopId} - no arrivals available`);
         return [];
       }
 

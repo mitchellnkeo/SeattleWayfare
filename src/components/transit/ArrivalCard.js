@@ -8,6 +8,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { format, formatDistanceToNow } from 'date-fns';
 import ReliabilityBadge from './ReliabilityBadge';
+import DelayPredictionBadge from './DelayPredictionBadge';
 
 /**
  * ArrivalCard - Shows arrival prediction with route info and reliability
@@ -91,15 +92,22 @@ export default function ArrivalCard({ arrival, onPress }) {
       </View>
 
       {/* Footer: Additional info */}
-      {reliability && (
-        <View style={styles.footer}>
+      <View style={styles.footer}>
+        {reliability && (
           <Text style={styles.footerText}>
             {reliability.onTimePerformance
               ? `${Math.round(reliability.onTimePerformance * 100)}% on-time`
               : 'Reliability data available'}
           </Text>
-        </View>
-      )}
+        )}
+        {/* Delay Prediction - Unique feature */}
+        {arrival.routeId && (
+          <DelayPredictionBadge
+            routeId={arrival.routeId}
+            arrival={arrival}
+          />
+        )}
+      </View>
     </View>
   );
 

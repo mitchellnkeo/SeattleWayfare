@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import NearbyStopsMap from '../components/map/NearbyStopsMap';
 import ArrivalCard from '../components/transit/ArrivalCard';
+import RouteHealthDashboard from '../components/transit/RouteHealthDashboard';
 import locationService from '../services/location/locationService';
 import metroService from '../services/gtfs/metroService';
 import obaService from '../services/onebusaway/obaService';
@@ -316,10 +317,20 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
+        {/* Route Health Dashboard - Unique feature */}
+        {arrivals.length > 0 && (
+          <RouteHealthDashboard arrivals={arrivals} />
+        )}
+
         {/* Arrivals */}
         {arrivals.length > 0 ? (
           <View style={styles.arrivalsSection}>
-            <Text style={styles.sectionTitle}>Next Arrivals</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Next Arrivals</Text>
+              <Text style={styles.sectionSubtitle}>
+                Tap any route for details
+              </Text>
+            </View>
             {arrivals.map((arrival, index) => (
               <ArrivalCard
                 key={`${arrival.tripId}-${arrival.scheduledArrivalTime}-${index}`}
@@ -482,6 +493,9 @@ const styles = StyleSheet.create({
   arrivalsSection: {
     paddingHorizontal: 20,
     marginBottom: 20,
+  },
+  sectionHeader: {
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 20,

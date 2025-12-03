@@ -67,8 +67,10 @@ export default function RouteDetailScreen({ route, navigation }) {
       setRouteData(routeInfo);
 
       // Get stops for this route (now async with OneBusAway fallback)
+      console.log(`🗺️ Loading stops for route: ${routeInfo.route_id}`);
       const routeStops = await metroService.getStopsForRoute(routeInfo.route_id);
-      setStops(routeStops);
+      console.log(`✅ Loaded ${routeStops?.length || 0} stops for route ${routeInfo.route_id}`);
+      setStops(routeStops || []);
 
       // Get reliability data
       const reliability = reliabilityService.getRouteReliability(routeInfo.route_id);
@@ -343,6 +345,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 16,
     marginBottom: 16,
+    height: 300, // Ensure map container has height
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   section: {
     paddingHorizontal: 20,

@@ -279,60 +279,77 @@ export default function TransitInfoScreen({ navigation }) {
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabs}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabsContainer}
+        contentContainerStyle={styles.tabsContent}
+      >
         <TouchableOpacity
           style={[styles.tab, activeTab === 'routes' && styles.tabActive]}
           onPress={() => setActiveTab('routes')}
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'routes' && styles.tabTextActive,
-            ]}
-          >
-            Routes ({routes.length})
-          </Text>
+          <View style={styles.tabTextContainer}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'routes' ? styles.tabTextActive : null,
+              ]}
+            >
+              Routes ({routes.length})
+            </Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'stops' && styles.tabActive]}
           onPress={() => setActiveTab('stops')}
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'stops' && styles.tabTextActive,
-            ]}
-          >
-            Stops ({stops.length})
-          </Text>
+          <View style={styles.tabTextContainer}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'stops' ? styles.tabTextActive : null,
+              ]}
+            >
+              Stops ({stops.length})
+            </Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'arrivals' && styles.tabActive]}
           onPress={() => setActiveTab('arrivals')}
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'arrivals' && styles.tabTextActive,
-            ]}
-          >
-            Arrivals
-          </Text>
+          <View style={styles.tabTextContainer}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'arrivals' ? styles.tabTextActive : null,
+              ]}
+            >
+              Arrivals
+            </Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'alerts' && styles.tabActive]}
           onPress={() => setActiveTab('alerts')}
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'alerts' && styles.tabTextActive,
-            ]}
-          >
-            Alerts ({serviceAlerts.length})
-          </Text>
+          <View style={styles.tabTextContainer}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'alerts' ? styles.tabTextActive : null,
+              ]}
+            >
+              Alerts ({serviceAlerts.length})
+            </Text>
+          </View>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* Content */}
       {activeTab === 'routes' && (
@@ -539,13 +556,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
-  tabs: {
-    flexDirection: 'row',
+  tabsContainer: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingTop: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  tabsContent: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   tab: {
     paddingVertical: 12,
@@ -553,9 +573,16 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
+    minWidth: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tabActive: {
     borderBottomColor: '#3B82F6',
+  },
+  tabTextContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tabText: {
     fontSize: 14,

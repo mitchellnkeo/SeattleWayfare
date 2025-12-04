@@ -261,6 +261,19 @@ class OneBusAwayService {
 
       const arrivals = data.data.entry.arrivalsAndDepartures || [];
 
+      // Debug: Log raw API response structure for first arrival
+      if (arrivals.length > 0) {
+        console.log('🔍 Raw OneBusAway arrival structure:', {
+          hasVehicleStatus: !!arrivals[0].vehicleStatus,
+          vehicleStatus: arrivals[0].vehicleStatus,
+          hasPosition: !!arrivals[0].position,
+          position: arrivals[0].position,
+          hasVehiclePosition: !!arrivals[0].vehiclePosition,
+          vehiclePosition: arrivals[0].vehiclePosition,
+          keys: Object.keys(arrivals[0]),
+        });
+      }
+
       return arrivals.map((arrival) => {
         const now = Date.now();
         const scheduledTime = arrival.scheduledArrivalTime;
@@ -291,7 +304,7 @@ class OneBusAwayService {
         // Check multiple possible field structures
         let vehiclePosition = null;
         
-        // Try vehicleStatus.position (most common structure)
+        // Try vehicleStatus.position (most common structure in OneBusAway)
         if (arrival.vehicleStatus && arrival.vehicleStatus.position) {
           vehiclePosition = {
             latitude: arrival.vehicleStatus.position.lat,
@@ -316,6 +329,17 @@ class OneBusAwayService {
             longitude: arrival.vehiclePosition.lon || arrival.vehiclePosition.longitude,
             heading: arrival.vehiclePosition.heading || 0,
             lastUpdateTime: arrival.vehiclePosition.lastUpdateTime || predictedTime,
+          };
+        }
+        // If we have vehicleId but no position, try to get it from trip details
+        // This is a fallback - trip details might have more complete vehicle info
+        else if (arrival.vehicleId && arrival.tripId) {
+          // We'll fetch trip details separately if needed
+          // For now, mark that we need to fetch trip details
+          vehiclePosition = {
+            needsTripDetails: true,
+            vehicleId: arrival.vehicleId,
+            tripId: arrival.tripId,
           };
         }
 
@@ -404,7 +428,19 @@ class OneBusAwayService {
         throw new Error('Invalid trip details response');
       }
 
-      return data.data.entry;
+      const tripDetails = data.data.entry;
+      
+      // Debug: Log trip details structure to see vehicle position data
+      if (tripDetails.status) {
+        console.log('🔍 Trip details vehicle status:', {
+          hasStatus: !!tripDetails.status,
+          hasPosition: !!tripDetails.status.position,
+          position: tripDetails.status.position,
+          statusKeys: Object.keys(tripDetails.status || {}),
+        });
+      }
+
+      return tripDetails;
     } catch (error) {
       console.error('Error fetching trip details:', error);
       throw error;
@@ -452,8 +488,9 @@ class OneBusAwayService {
       const vehicles = new Map(); // Use Map to deduplicate by vehicleId
 
       // Sample a few stops along the route (or use provided stops)
+      // Limit to 5 stops to avoid rate limits when fetching trip details
       const stopsToCheck = stops.length > 0 
-        ? stops.slice(0, Math.min(10, stops.length)) // Check up to 10 stops for better coverage
+        ? stops.slice(0, Math.min(5, stops.length)) // Check up to 5 stops to avoid rate limits
         : [];
 
       if (stopsToCheck.length === 0) {
@@ -475,49 +512,55 @@ class OneBusAwayService {
           });
 
           // Extract vehicle positions from arrivals
-          arrivals.forEach((arrival) => {
+          // Since vehiclePosition is null in arrivals, we need to get it from trip details
+          // Collect unique trip IDs first to avoid duplicate API calls
+          const uniqueTrips = new Map();
+          for (const arrival of arrivals) {
             // Only include vehicles for this route
-            if (arrival.routeId === routeId && arrival.vehicleId) {
-              // Debug: Log arrival data to see structure
-              if (arrivals.length > 0 && arrivals.indexOf(arrival) === 0) {
-                console.log('🔍 Sample arrival data structure:', {
-                  hasVehiclePosition: !!arrival.vehiclePosition,
-                  vehiclePosition: arrival.vehiclePosition,
-                  vehicleId: arrival.vehicleId,
-                  routeId: arrival.routeId,
-                });
+            if (arrival.routeId === routeId && arrival.vehicleId && arrival.tripId) {
+              if (!uniqueTrips.has(arrival.tripId)) {
+                uniqueTrips.set(arrival.tripId, arrival);
               }
-              
-              // Use REAL vehicle position from API if available
-              if (arrival.vehiclePosition && arrival.vehiclePosition.latitude && arrival.vehiclePosition.longitude) {
+            }
+          }
+
+          // Fetch vehicle positions from trip details (limit to avoid rate limits)
+          const tripArray = Array.from(uniqueTrips.values()).slice(0, 10); // Max 10 trips
+          for (const arrival of tripArray) {
+            try {
+              const tripVehicle = await this.getVehicleForTrip(arrival.tripId);
+              if (tripVehicle && tripVehicle.latitude && tripVehicle.longitude) {
                 if (!vehicles.has(arrival.vehicleId)) {
                   vehicles.set(arrival.vehicleId, {
                     vehicleId: arrival.vehicleId,
                     tripId: arrival.tripId,
                     routeId: arrival.routeId,
-                    // REAL GPS coordinates from OneBusAway API
-                    latitude: arrival.vehiclePosition.latitude,
-                    longitude: arrival.vehiclePosition.longitude,
-                    heading: arrival.vehiclePosition.heading || 0,
-                    lastUpdateTime: arrival.vehiclePosition.lastUpdateTime || arrival.predictedArrivalTime,
+                    // REAL GPS coordinates from trip details
+                    latitude: tripVehicle.latitude,
+                    longitude: tripVehicle.longitude,
+                    heading: tripVehicle.heading || 0,
+                    lastUpdateTime: tripVehicle.lastUpdateTime || arrival.predictedArrivalTime,
                     distanceFromStop: arrival.distanceFromStop,
                   });
                 } else {
                   // Update with more recent position if available
                   const existing = vehicles.get(arrival.vehicleId);
-                  if (arrival.vehiclePosition.lastUpdateTime > existing.lastUpdateTime) {
+                  if (tripVehicle.lastUpdateTime > existing.lastUpdateTime) {
                     vehicles.set(arrival.vehicleId, {
                       ...existing,
-                      latitude: arrival.vehiclePosition.latitude,
-                      longitude: arrival.vehiclePosition.longitude,
-                      heading: arrival.vehiclePosition.heading || existing.heading,
-                      lastUpdateTime: arrival.vehiclePosition.lastUpdateTime,
+                      latitude: tripVehicle.latitude,
+                      longitude: tripVehicle.longitude,
+                      heading: tripVehicle.heading || existing.heading,
+                      lastUpdateTime: tripVehicle.lastUpdateTime,
                     });
                   }
                 }
               }
+            } catch (tripError) {
+              console.warn(`Could not get vehicle position for trip ${arrival.tripId}:`, tripError.message);
+              // Continue with other trips
             }
-          });
+          }
         } catch (error) {
           console.warn(`Error getting arrivals for stop ${stop} to find vehicles:`, error);
           // Continue with other stops

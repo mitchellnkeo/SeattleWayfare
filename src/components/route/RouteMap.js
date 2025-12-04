@@ -49,17 +49,6 @@ export default function RouteMap({ routeId, stops = [], route }) {
   const [showVehicles, setShowVehicles] = useState(true);
   const vehicleUpdateInterval = useRef(null);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('🗺️ RouteMap props:', {
-      routeId,
-      stopsCount: stops?.length || 0,
-      hasRoute: !!route,
-      platform: Platform.OS,
-      mapsAvailable,
-    });
-  }, [routeId, stops, route]);
-
   useEffect(() => {
     const timer = setTimeout(() => {
       setMapReady(true);
@@ -112,10 +101,7 @@ export default function RouteMap({ routeId, stops = [], route }) {
   }, [routeId, stops]);
 
   const calculateRegion = () => {
-    if (!stops || stops.length === 0) {
-      console.log('⚠️ RouteMap: Cannot calculate region - no stops');
-      return;
-    }
+    if (!stops || stops.length === 0) return;
 
     const validStops = stops.filter(
       (stop) =>
@@ -125,12 +111,7 @@ export default function RouteMap({ routeId, stops = [], route }) {
         !isNaN(parseFloat(stop.stop_lon))
     );
 
-    if (validStops.length === 0) {
-      console.log('⚠️ RouteMap: No valid stops with coordinates');
-      return;
-    }
-
-    console.log(`✅ RouteMap: Calculating region from ${validStops.length} valid stops`);
+    if (validStops.length === 0) return;
 
     const lats = validStops.map((stop) => parseFloat(stop.stop_lat));
     const lons = validStops.map((stop) => parseFloat(stop.stop_lon));
@@ -143,15 +124,12 @@ export default function RouteMap({ routeId, stops = [], route }) {
     const latDelta = (maxLat - minLat) * 1.2 + 0.01; // Add padding
     const lonDelta = (maxLon - minLon) * 1.2 + 0.01;
 
-    const calculatedRegion = {
+    setRegion({
       latitude: (minLat + maxLat) / 2,
       longitude: (minLon + maxLon) / 2,
       latitudeDelta: Math.max(latDelta, 0.01),
       longitudeDelta: Math.max(lonDelta, 0.01),
-    };
-
-    console.log('✅ RouteMap: Region calculated:', calculatedRegion);
-    setRegion(calculatedRegion);
+    });
   };
 
   // Check platform first - web doesn't support maps
@@ -179,9 +157,18 @@ export default function RouteMap({ routeId, stops = [], route }) {
     );
   }
 
+  // If we have stops but no region yet, keep loading
+  if (stops && stops.length > 0 && !region) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Loading route map...</Text>
+      </View>
+    );
+  }
+
   // If no stops available, show message
   if (!stops || stops.length === 0) {
-    console.log('⚠️ RouteMap: No stops available for route', routeId);
     return (
       <View style={styles.container}>
         <View style={styles.fallbackContainer}>
@@ -192,26 +179,17 @@ export default function RouteMap({ routeId, stops = [], route }) {
           <Text style={styles.fallbackSubtext}>
             This may be because stop data is still loading or the route has no active stops.
           </Text>
-          <Text style={styles.fallbackSubtext}>
-            Route ID: {routeId || 'Unknown'}
-          </Text>
         </View>
       </View>
     );
   }
 
-  // If we have stops but no region yet, or map not ready, show loading
+  // If map not ready but we have stops and region, show loading
   if (!mapReady || !region) {
-    console.log('⏳ RouteMap: Waiting for map to be ready. mapReady:', mapReady, 'region:', !!region, 'stops:', stops?.length);
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text style={styles.loadingText}>Loading route map...</Text>
-        {stops && stops.length > 0 && !region && (
-          <Text style={styles.loadingText}>
-            Calculating map region from {stops.length} stops...
-          </Text>
-        )}
       </View>
     );
   }

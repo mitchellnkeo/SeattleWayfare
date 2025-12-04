@@ -106,10 +106,16 @@ export default function RouteMap({ routeId, stops = [], route }) {
     // Fetch immediately
     fetchVehicles();
 
-    // Update every 10 seconds for smoother live tracking
+    // Update every 8 seconds for smoother live tracking
+    // Note: Reducing further may hit rate limits (429 errors)
+    // API call pattern: ~5 stops (arrivals) + ~10 trips (trip details) = ~15 calls per update
+    // At 10 seconds: ~1.5 calls/second (original, very safe)
+    // At 8 seconds: ~1.875 calls/second (current, safe)
+    // At 5 seconds: ~3 calls/second (may hit limits if multiple routes tracked)
+    // At 3 seconds: ~5 calls/second (likely to hit rate limits)
     vehicleUpdateInterval.current = setInterval(() => {
       fetchVehicles();
-    }, 10000);
+    }, 8000);
 
     return () => {
       if (vehicleUpdateInterval.current) {

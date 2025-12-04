@@ -84,45 +84,84 @@ export default function RouteMap({ routeId, stops = [], route }) {
     }
   }, [followedVehicleId, vehicles, mapInitialized]);
 
-  // Fetch live vehicle positions
+  // Fetch live vehicle positions with smart rate limiting
   useEffect(() => {
     if (!routeId || !obaService.isConfigured() || stops.length === 0) {
       return;
     }
 
+    let updateInterval = 8000; // Start with 8 seconds (safe default)
+    let consecutiveErrors = 0;
+    let lastVehicleCount = 0;
+
     const fetchVehicles = async () => {
       try {
         // Convert GTFS route ID to OBA format
         const obaRouteId = gtfsToObaRouteId(routeId);
-        // Pass stops to help find vehicles
-        const routeVehicles = await obaService.getVehiclesForRoute(obaRouteId, stops);
+        
+        // OPTIMIZATION: If following a vehicle, prioritize it with faster updates
+        const priorityVehicleId = followedVehicleId;
+        
+        // Pass stops and priority vehicle to help find vehicles
+        const routeVehicles = await obaService.getVehiclesForRoute(obaRouteId, stops, {
+          priorityVehicleId, // Pass followed vehicle for prioritized updates
+        });
+        
         setVehicles(routeVehicles || []);
+        
+        // Adaptive rate limiting: if we got vehicles successfully, we can speed up
+        const currentVehicleCount = routeVehicles?.length || 0;
+        if (currentVehicleCount > 0) {
+          consecutiveErrors = 0;
+          // If we have vehicles and they're updating, we can be more aggressive
+          if (currentVehicleCount === lastVehicleCount && updateInterval > 5000) {
+            // Vehicles are stable, can speed up slightly
+            updateInterval = Math.max(5000, updateInterval - 500);
+          }
+          lastVehicleCount = currentVehicleCount;
+        }
       } catch (error) {
+        consecutiveErrors++;
         console.warn('Error fetching vehicles for route:', error);
         setVehicles([]);
+        
+        // Adaptive rate limiting: if we hit errors, slow down
+        if (consecutiveErrors >= 2) {
+          updateInterval = Math.min(15000, updateInterval + 2000); // Slow down, max 15s
+        }
       }
     };
 
     // Fetch immediately
     fetchVehicles();
 
-    // Update every 8 seconds for smoother live tracking
-    // Note: Reducing further may hit rate limits (429 errors)
-    // API call pattern: ~5 stops (arrivals) + ~10 trips (trip details) = ~15 calls per update
-    // At 10 seconds: ~1.5 calls/second (original, very safe)
-    // At 8 seconds: ~1.875 calls/second (current, safe)
-    // At 5 seconds: ~3 calls/second (may hit limits if multiple routes tracked)
-    // At 3 seconds: ~5 calls/second (likely to hit rate limits)
-    vehicleUpdateInterval.current = setInterval(() => {
-      fetchVehicles();
-    }, 8000);
+    // OPTIMIZATION: Dynamic update interval based on whether vehicle is followed
+    // If following a vehicle, update more frequently for smoother tracking
+    const getUpdateInterval = () => {
+      if (followedVehicleId) {
+        return 3000; // 3 seconds when following (smoother animation)
+      }
+      return updateInterval; // Use adaptive interval otherwise
+    };
+
+    const scheduleNextUpdate = () => {
+      const interval = getUpdateInterval();
+      vehicleUpdateInterval.current = setTimeout(() => {
+        fetchVehicles().finally(() => {
+          scheduleNextUpdate(); // Schedule next update
+        });
+      }, interval);
+    };
+
+    // Start the update cycle
+    scheduleNextUpdate();
 
     return () => {
       if (vehicleUpdateInterval.current) {
-        clearInterval(vehicleUpdateInterval.current);
+        clearTimeout(vehicleUpdateInterval.current);
       }
     };
-  }, [routeId, stops]);
+  }, [routeId, stops, followedVehicleId]);
 
   const calculateRegion = () => {
     if (!stops || stops.length === 0) return;
@@ -336,6 +375,8 @@ function AnimatedVehicleMarker({ vehicle, route, isFollowed = false, onPress }) 
   });
   const [displayRotation, setDisplayRotation] = useState(vehicle.heading || 0);
   const animationRef = useRef(null);
+  const lastVehicleRef = useRef(null); // Store last vehicle data for prediction
+  const predictionRef = useRef(null); // Store prediction interval
 
   useEffect(() => {
     // Cancel any ongoing animation

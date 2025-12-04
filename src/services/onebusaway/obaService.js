@@ -286,6 +286,39 @@ class OneBusAwayService {
           status = 'ARRIVING';
         }
 
+        // Extract vehicle position if available
+        // OneBusAway API includes vehicle position in the arrival data
+        // Check multiple possible field structures
+        let vehiclePosition = null;
+        
+        // Try vehicleStatus.position (most common structure)
+        if (arrival.vehicleStatus && arrival.vehicleStatus.position) {
+          vehiclePosition = {
+            latitude: arrival.vehicleStatus.position.lat,
+            longitude: arrival.vehicleStatus.position.lon,
+            heading: arrival.vehicleStatus.position.heading || 0,
+            lastUpdateTime: arrival.vehicleStatus.lastUpdateTime || predictedTime,
+          };
+        }
+        // Try direct position fields
+        else if (arrival.position && arrival.position.lat) {
+          vehiclePosition = {
+            latitude: arrival.position.lat,
+            longitude: arrival.position.lon,
+            heading: arrival.position.heading || 0,
+            lastUpdateTime: arrival.lastUpdateTime || predictedTime,
+          };
+        }
+        // Try vehiclePosition field
+        else if (arrival.vehiclePosition) {
+          vehiclePosition = {
+            latitude: arrival.vehiclePosition.lat || arrival.vehiclePosition.latitude,
+            longitude: arrival.vehiclePosition.lon || arrival.vehiclePosition.longitude,
+            heading: arrival.vehiclePosition.heading || 0,
+            lastUpdateTime: arrival.vehiclePosition.lastUpdateTime || predictedTime,
+          };
+        }
+
         return {
           routeId: arrival.routeId,
           routeShortName: arrival.routeShortName,
@@ -299,6 +332,7 @@ class OneBusAwayService {
           vehicleId: arrival.vehicleId,
           distanceFromStop: arrival.distanceFromStop,
           status,
+          vehiclePosition, // Real vehicle position from API
         };
       });
     } catch (error) {
@@ -378,14 +412,26 @@ class OneBusAwayService {
   }
 
   /**
-   * Get vehicle location (real-time bus tracking)
+   * Get vehicle location (real-time bus tracking) from trip details
    * @param {string} tripId - Trip ID in OneBusAway format
-   * @returns {Promise<Object|null>} Vehicle position object or null
+   * @returns {Promise<Object|null>} Vehicle position object with lat/lon/heading or null
    */
   async getVehicleForTrip(tripId) {
     try {
       const tripDetails = await this.getTripDetails(tripId);
-      return tripDetails.status?.position || null;
+      
+      // Extract vehicle position from trip status
+      if (tripDetails.status && tripDetails.status.position) {
+        const pos = tripDetails.status.position;
+        return {
+          latitude: pos.lat,
+          longitude: pos.lon,
+          heading: pos.heading || 0,
+          lastUpdateTime: tripDetails.status.lastUpdateTime || Date.now(),
+        };
+      }
+      
+      return null;
     } catch (error) {
       console.error('Error fetching vehicle for trip:', error);
       return null;
@@ -393,21 +439,21 @@ class OneBusAwayService {
   }
 
   /**
-   * Get all vehicles (buses) currently running on a route
-   * Uses arrivals data to extract vehicle positions (more reliable than vehicles-for-route endpoint)
+   * Get all vehicles (buses) currently running on a route with REAL-TIME positions
+   * Uses arrivals data to extract actual vehicle positions from OneBusAway API
    * @param {string} routeId - Route ID in OneBusAway format (e.g., "1_100275")
    * @param {Array} stops - Array of stop IDs to check for vehicles
-   * @returns {Promise<Array>} Array of vehicle position objects
+   * @returns {Promise<Array>} Array of vehicle position objects with real GPS coordinates
    */
   async getVehiclesForRoute(routeId, stops = []) {
     try {
       // Strategy: Get arrivals from multiple stops on the route to find active vehicles
-      // This is more reliable than the vehicles-for-route endpoint which may not be available
+      // OneBusAway API includes vehicle position data in arrivals responses
       const vehicles = new Map(); // Use Map to deduplicate by vehicleId
 
       // Sample a few stops along the route (or use provided stops)
       const stopsToCheck = stops.length > 0 
-        ? stops.slice(0, Math.min(5, stops.length)) // Check up to 5 stops
+        ? stops.slice(0, Math.min(10, stops.length)) // Check up to 10 stops for better coverage
         : [];
 
       if (stopsToCheck.length === 0) {
@@ -431,23 +477,34 @@ class OneBusAwayService {
           // Extract vehicle positions from arrivals
           arrivals.forEach((arrival) => {
             // Only include vehicles for this route
-            if (arrival.routeId === routeId && arrival.vehicleId && arrival.distanceFromStop !== undefined) {
-              // If we have distance from stop, we can estimate position
-              // For now, we'll use the stop position as a proxy
-              // In a full implementation, we'd calculate the vehicle position based on distance and heading
-              if (!vehicles.has(arrival.vehicleId)) {
-                const stopObj = typeof stop === 'object' ? stop : null;
-                vehicles.set(arrival.vehicleId, {
-                  vehicleId: arrival.vehicleId,
-                  tripId: arrival.tripId,
-                  routeId: arrival.routeId,
-                  // Use stop position as proxy (would need actual vehicle position from API)
-                  latitude: stopObj?.stop_lat || stopObj?.lat || null,
-                  longitude: stopObj?.stop_lon || stopObj?.lon || null,
-                  heading: 0, // Would need from API
-                  distanceFromStop: arrival.distanceFromStop,
-                  lastUpdateTime: arrival.predictedArrivalTime,
-                });
+            if (arrival.routeId === routeId && arrival.vehicleId) {
+              // Use REAL vehicle position from API if available
+              if (arrival.vehiclePosition && arrival.vehiclePosition.latitude && arrival.vehiclePosition.longitude) {
+                if (!vehicles.has(arrival.vehicleId)) {
+                  vehicles.set(arrival.vehicleId, {
+                    vehicleId: arrival.vehicleId,
+                    tripId: arrival.tripId,
+                    routeId: arrival.routeId,
+                    // REAL GPS coordinates from OneBusAway API
+                    latitude: arrival.vehiclePosition.latitude,
+                    longitude: arrival.vehiclePosition.longitude,
+                    heading: arrival.vehiclePosition.heading || 0,
+                    lastUpdateTime: arrival.vehiclePosition.lastUpdateTime || arrival.predictedArrivalTime,
+                    distanceFromStop: arrival.distanceFromStop,
+                  });
+                } else {
+                  // Update with more recent position if available
+                  const existing = vehicles.get(arrival.vehicleId);
+                  if (arrival.vehiclePosition.lastUpdateTime > existing.lastUpdateTime) {
+                    vehicles.set(arrival.vehicleId, {
+                      ...existing,
+                      latitude: arrival.vehiclePosition.latitude,
+                      longitude: arrival.vehiclePosition.longitude,
+                      heading: arrival.vehiclePosition.heading || existing.heading,
+                      lastUpdateTime: arrival.vehiclePosition.lastUpdateTime,
+                    });
+                  }
+                }
               }
             }
           });
@@ -457,7 +514,9 @@ class OneBusAwayService {
         }
       }
 
-      return Array.from(vehicles.values()).filter(v => v.latitude && v.longitude);
+      const vehicleArray = Array.from(vehicles.values()).filter(v => v.latitude && v.longitude);
+      console.log(`✅ Found ${vehicleArray.length} vehicles with real-time positions for route ${routeId}`);
+      return vehicleArray;
     } catch (error) {
       console.warn('Error fetching vehicles for route:', routeId, error);
       return [];

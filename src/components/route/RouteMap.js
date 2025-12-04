@@ -49,6 +49,15 @@ export default function RouteMap({ routeId, stops = [], route }) {
   const [showVehicles, setShowVehicles] = useState(true);
   const vehicleUpdateInterval = useRef(null);
 
+  // Debug: Log vehicles state changes
+  useEffect(() => {
+    if (vehicles.length > 0) {
+      console.log(`🚌 RouteMap: ${vehicles.length} vehicles ready to display`, vehicles);
+    } else {
+      console.log('🚌 RouteMap: No vehicles to display');
+    }
+  }, [vehicles]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setMapReady(true);
@@ -76,8 +85,18 @@ export default function RouteMap({ routeId, stops = [], route }) {
       try {
         // Convert GTFS route ID to OBA format
         const obaRouteId = gtfsToObaRouteId(routeId);
+        console.log(`🚌 Fetching vehicles for route ${routeId} (OBA: ${obaRouteId}) with ${stops.length} stops`);
         // Pass stops to help find vehicles
         const routeVehicles = await obaService.getVehiclesForRoute(obaRouteId, stops);
+        console.log(`🚌 Found ${routeVehicles?.length || 0} vehicles for route ${routeId}`);
+        if (routeVehicles && routeVehicles.length > 0) {
+          console.log('🚌 Vehicle positions:', routeVehicles.map(v => ({
+            id: v.vehicleId,
+            lat: v.latitude,
+            lon: v.longitude,
+            heading: v.heading
+          })));
+        }
         setVehicles(routeVehicles || []);
       } catch (error) {
         console.warn('Error fetching vehicles for route:', error);
@@ -258,7 +277,10 @@ export default function RouteMap({ routeId, stops = [], route }) {
         {/* Live vehicle markers */}
         {mapInitialized && showVehicles && vehicles.length > 0 &&
           vehicles.map((vehicle) => {
-            if (!vehicle.latitude || !vehicle.longitude) return null;
+            if (!vehicle.latitude || !vehicle.longitude) {
+              console.log('⚠️ Vehicle missing coordinates:', vehicle);
+              return null;
+            }
 
             return (
               <Marker
@@ -267,37 +289,12 @@ export default function RouteMap({ routeId, stops = [], route }) {
                   latitude: vehicle.latitude,
                   longitude: vehicle.longitude,
                 }}
-                title={`🚌 ${route?.route_short_name || 'Bus'}`}
+                title={`🚌 Route ${route?.route_short_name || 'Bus'}`}
                 description={`Live position`}
                 pinColor="#22C55E" // Green for live vehicles
                 rotation={vehicle.heading || 0}
               >
-                {/* Custom bus icon using emoji - you could replace with a custom image */}
-                <View style={styles.vehicleMarker}>
-                  <Text style={styles.vehicleEmoji}>🚌</Text>
-                </View>
-              </Marker>
-            );
-          })}
-
-        {/* Live vehicle markers */}
-        {mapInitialized && showVehicles && vehicles.length > 0 &&
-          vehicles.map((vehicle) => {
-            if (!vehicle.latitude || !vehicle.longitude) return null;
-
-            return (
-              <Marker
-                key={vehicle.vehicleId || `vehicle-${vehicle.tripId}`}
-                coordinate={{
-                  latitude: vehicle.latitude,
-                  longitude: vehicle.longitude,
-                }}
-                title={`🚌 ${route?.route_short_name || 'Bus'}`}
-                description={`Live position`}
-                pinColor="#22C55E" // Green for live vehicles
-                rotation={vehicle.heading || 0}
-              >
-                {/* Custom bus icon using emoji - you could replace with a custom image */}
+                {/* Custom bus icon */}
                 <View style={styles.vehicleMarker}>
                   <Text style={styles.vehicleEmoji}>🚌</Text>
                 </View>

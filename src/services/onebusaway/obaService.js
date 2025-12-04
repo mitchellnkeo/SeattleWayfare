@@ -478,6 +478,16 @@ class OneBusAwayService {
           arrivals.forEach((arrival) => {
             // Only include vehicles for this route
             if (arrival.routeId === routeId && arrival.vehicleId) {
+              // Debug: Log arrival data to see structure
+              if (arrivals.length > 0 && arrivals.indexOf(arrival) === 0) {
+                console.log('🔍 Sample arrival data structure:', {
+                  hasVehiclePosition: !!arrival.vehiclePosition,
+                  vehiclePosition: arrival.vehiclePosition,
+                  vehicleId: arrival.vehicleId,
+                  routeId: arrival.routeId,
+                });
+              }
+              
               // Use REAL vehicle position from API if available
               if (arrival.vehiclePosition && arrival.vehiclePosition.latitude && arrival.vehiclePosition.longitude) {
                 if (!vehicles.has(arrival.vehicleId)) {

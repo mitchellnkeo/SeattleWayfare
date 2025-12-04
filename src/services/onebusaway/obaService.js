@@ -261,19 +261,6 @@ class OneBusAwayService {
 
       const arrivals = data.data.entry.arrivalsAndDepartures || [];
 
-      // Debug: Log raw API response structure for first arrival
-      if (arrivals.length > 0) {
-        console.log('🔍 Raw OneBusAway arrival structure:', {
-          hasVehicleStatus: !!arrivals[0].vehicleStatus,
-          vehicleStatus: arrivals[0].vehicleStatus,
-          hasPosition: !!arrivals[0].position,
-          position: arrivals[0].position,
-          hasVehiclePosition: !!arrivals[0].vehiclePosition,
-          vehiclePosition: arrivals[0].vehiclePosition,
-          keys: Object.keys(arrivals[0]),
-        });
-      }
-
       return arrivals.map((arrival) => {
         const now = Date.now();
         const scheduledTime = arrival.scheduledArrivalTime;
@@ -428,19 +415,7 @@ class OneBusAwayService {
         throw new Error('Invalid trip details response');
       }
 
-      const tripDetails = data.data.entry;
-      
-      // Debug: Log trip details structure to see vehicle position data
-      if (tripDetails.status) {
-        console.log('🔍 Trip details vehicle status:', {
-          hasStatus: !!tripDetails.status,
-          hasPosition: !!tripDetails.status.position,
-          position: tripDetails.status.position,
-          statusKeys: Object.keys(tripDetails.status || {}),
-        });
-      }
-
-      return tripDetails;
+      return data.data.entry;
     } catch (error) {
       console.error('Error fetching trip details:', error);
       throw error;
@@ -459,11 +434,22 @@ class OneBusAwayService {
       // Extract vehicle position from trip status
       if (tripDetails.status && tripDetails.status.position) {
         const pos = tripDetails.status.position;
+        const status = tripDetails.status;
+        
+        // Get heading from orientation (OneBusAway uses orientation in degrees)
+        // orientation is the direction the vehicle is facing (0-360 degrees)
+        let heading = 0;
+        if (status.orientation !== undefined && status.orientation !== null) {
+          heading = status.orientation;
+        } else if (status.lastKnownOrientation !== undefined && status.lastKnownOrientation !== null) {
+          heading = status.lastKnownOrientation;
+        }
+        
         return {
           latitude: pos.lat,
           longitude: pos.lon,
-          heading: pos.heading || 0,
-          lastUpdateTime: tripDetails.status.lastUpdateTime || Date.now(),
+          heading: heading,
+          lastUpdateTime: status.lastUpdateTime || status.lastLocationUpdateTime || Date.now(),
         };
       }
       
@@ -538,7 +524,7 @@ class OneBusAwayService {
                     // REAL GPS coordinates from trip details
                     latitude: tripVehicle.latitude,
                     longitude: tripVehicle.longitude,
-                    heading: tripVehicle.heading || 0,
+                    heading: tripVehicle.heading || 0, // Orientation in degrees (0-360)
                     lastUpdateTime: tripVehicle.lastUpdateTime || arrival.predictedArrivalTime,
                     distanceFromStop: arrival.distanceFromStop,
                   });
@@ -568,7 +554,6 @@ class OneBusAwayService {
       }
 
       const vehicleArray = Array.from(vehicles.values()).filter(v => v.latitude && v.longitude);
-      console.log(`✅ Found ${vehicleArray.length} vehicles with real-time positions for route ${routeId}`);
       return vehicleArray;
     } catch (error) {
       console.warn('Error fetching vehicles for route:', routeId, error);

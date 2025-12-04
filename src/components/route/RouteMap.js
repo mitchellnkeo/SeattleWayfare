@@ -47,16 +47,9 @@ export default function RouteMap({ routeId, stops = [], route }) {
   const [region, setRegion] = useState(null);
   const [vehicles, setVehicles] = useState([]);
   const [showVehicles, setShowVehicles] = useState(true);
+  const [followedVehicleId, setFollowedVehicleId] = useState(null);
   const vehicleUpdateInterval = useRef(null);
-
-  // Debug: Log vehicles state changes
-  useEffect(() => {
-    if (vehicles.length > 0) {
-      console.log(`🚌 RouteMap: ${vehicles.length} vehicles ready to display`, vehicles);
-    } else {
-      console.log('🚌 RouteMap: No vehicles to display');
-    }
-  }, [vehicles]);
+  const mapRef = useRef(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -75,6 +68,22 @@ export default function RouteMap({ routeId, stops = [], route }) {
     }
   }, [stops]);
 
+  // Follow the selected vehicle as it moves
+  useEffect(() => {
+    if (followedVehicleId && mapRef.current && mapInitialized) {
+      const followedVehicle = vehicles.find(v => v.vehicleId === followedVehicleId);
+      if (followedVehicle && followedVehicle.latitude && followedVehicle.longitude) {
+        // Smoothly animate map to follow the vehicle
+        mapRef.current.animateToRegion({
+          latitude: followedVehicle.latitude,
+          longitude: followedVehicle.longitude,
+          latitudeDelta: 0.01, // Zoomed in view
+          longitudeDelta: 0.01,
+        }, 500); // 500ms animation
+      }
+    }
+  }, [followedVehicleId, vehicles, mapInitialized]);
+
   // Fetch live vehicle positions
   useEffect(() => {
     if (!routeId || !obaService.isConfigured() || stops.length === 0) {
@@ -85,18 +94,8 @@ export default function RouteMap({ routeId, stops = [], route }) {
       try {
         // Convert GTFS route ID to OBA format
         const obaRouteId = gtfsToObaRouteId(routeId);
-        console.log(`🚌 Fetching vehicles for route ${routeId} (OBA: ${obaRouteId}) with ${stops.length} stops`);
         // Pass stops to help find vehicles
         const routeVehicles = await obaService.getVehiclesForRoute(obaRouteId, stops);
-        console.log(`🚌 Found ${routeVehicles?.length || 0} vehicles for route ${routeId}`);
-        if (routeVehicles && routeVehicles.length > 0) {
-          console.log('🚌 Vehicle positions:', routeVehicles.map(v => ({
-            id: v.vehicleId,
-            lat: v.latitude,
-            lon: v.longitude,
-            heading: v.heading
-          })));
-        }
         setVehicles(routeVehicles || []);
       } catch (error) {
         console.warn('Error fetching vehicles for route:', error);
@@ -107,10 +106,10 @@ export default function RouteMap({ routeId, stops = [], route }) {
     // Fetch immediately
     fetchVehicles();
 
-    // Update every 15 seconds for live tracking
+    // Update every 10 seconds for smoother live tracking
     vehicleUpdateInterval.current = setInterval(() => {
       fetchVehicles();
-    }, 15000);
+    }, 10000);
 
     return () => {
       if (vehicleUpdateInterval.current) {
@@ -227,23 +226,31 @@ export default function RouteMap({ routeId, stops = [], route }) {
       longitude: parseFloat(stop.stop_lon),
     }));
 
-  try {
-    return (
-      <MapView
-        style={styles.map}
-        initialRegion={region}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        mapType="standard"
-        loadingEnabled={true}
-        onMapReady={() => {
-          console.log('✅ Route map loaded');
-          setMapInitialized(true);
-        }}
-        onError={(error) => {
-          console.error('❌ Route map error:', error);
-        }}
-      >
+    try {
+      return (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          initialRegion={region}
+          region={followedVehicleId ? undefined : region} // Let region control when not following
+          showsUserLocation={false}
+          showsMyLocationButton={false}
+          mapType="standard"
+          loadingEnabled={true}
+          onMapReady={() => {
+            console.log('✅ Route map loaded');
+            setMapInitialized(true);
+          }}
+          onError={(error) => {
+            console.error('❌ Route map error:', error);
+          }}
+          onPress={() => {
+            // Tap outside vehicle - unlock following
+            if (followedVehicleId) {
+              setFollowedVehicleId(null);
+            }
+          }}
+        >
         {/* Route polyline */}
         {mapInitialized && routeCoordinates.length > 1 && (
           <Polyline
@@ -274,31 +281,30 @@ export default function RouteMap({ routeId, stops = [], route }) {
             );
           })}
 
-        {/* Live vehicle markers */}
+        {/* Live vehicle markers with animation */}
         {mapInitialized && showVehicles && vehicles.length > 0 &&
           vehicles.map((vehicle) => {
             if (!vehicle.latitude || !vehicle.longitude) {
-              console.log('⚠️ Vehicle missing coordinates:', vehicle);
               return null;
             }
 
+            const isFollowed = followedVehicleId === vehicle.vehicleId;
+
             return (
-              <Marker
+              <AnimatedVehicleMarker
                 key={vehicle.vehicleId || `vehicle-${vehicle.tripId}`}
-                coordinate={{
-                  latitude: vehicle.latitude,
-                  longitude: vehicle.longitude,
+                vehicle={vehicle}
+                route={route}
+                isFollowed={isFollowed}
+                onPress={() => {
+                  // Toggle follow state
+                  if (isFollowed) {
+                    setFollowedVehicleId(null);
+                  } else {
+                    setFollowedVehicleId(vehicle.vehicleId);
+                  }
                 }}
-                title={`🚌 Route ${route?.route_short_name || 'Bus'}`}
-                description={`Live position`}
-                pinColor="#22C55E" // Green for live vehicles
-                rotation={vehicle.heading || 0}
-              >
-                {/* Custom bus icon */}
-                <View style={styles.vehicleMarker}>
-                  <Text style={styles.vehicleEmoji}>🚌</Text>
-                </View>
-              </Marker>
+              />
             );
           })}
       </MapView>
@@ -311,6 +317,106 @@ export default function RouteMap({ routeId, stops = [], route }) {
       </View>
     );
   }
+}
+
+/**
+ * Animated vehicle marker component for smooth movement
+ * Uses interpolation to smoothly transition between position updates
+ */
+function AnimatedVehicleMarker({ vehicle, route, isFollowed = false, onPress }) {
+  const [displayCoordinate, setDisplayCoordinate] = useState({
+    latitude: vehicle.latitude,
+    longitude: vehicle.longitude,
+  });
+  const [displayRotation, setDisplayRotation] = useState(vehicle.heading || 0);
+  const animationRef = useRef(null);
+
+  useEffect(() => {
+    // Cancel any ongoing animation
+    if (animationRef.current) {
+      clearInterval(animationRef.current);
+    }
+
+    const startLat = displayCoordinate.latitude;
+    const startLon = displayCoordinate.longitude;
+    const endLat = vehicle.latitude;
+    const endLon = vehicle.longitude;
+    const startRotation = displayRotation;
+    const endRotation = vehicle.heading || 0;
+
+    const duration = 1000; // 1 second animation
+    const steps = 20; // 20 steps for smooth animation
+    const stepDuration = duration / steps;
+    let currentStep = 0;
+
+    animationRef.current = setInterval(() => {
+      currentStep++;
+      const progress = currentStep / steps;
+
+      // Linear interpolation
+      const newLat = startLat + (endLat - startLat) * progress;
+      const newLon = startLon + (endLon - startLon) * progress;
+      
+      // Handle rotation (account for 360-degree wrap)
+      let newRotation = startRotation;
+      if (Math.abs(endRotation - startRotation) > 180) {
+        // Handle wrap-around
+        if (endRotation > startRotation) {
+          newRotation = startRotation - (360 - (endRotation - startRotation)) * progress;
+        } else {
+          newRotation = startRotation + (360 - (startRotation - endRotation)) * progress;
+        }
+      } else {
+        newRotation = startRotation + (endRotation - startRotation) * progress;
+      }
+      // Normalize rotation to 0-360
+      newRotation = ((newRotation % 360) + 360) % 360;
+
+      setDisplayCoordinate({ latitude: newLat, longitude: newLon });
+      setDisplayRotation(newRotation);
+
+      if (currentStep >= steps) {
+        // Animation complete - set final values
+        setDisplayCoordinate({ latitude: endLat, longitude: endLon });
+        setDisplayRotation(endRotation);
+        clearInterval(animationRef.current);
+        animationRef.current = null;
+      }
+    }, stepDuration);
+
+    return () => {
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+      }
+    };
+  }, [vehicle.latitude, vehicle.longitude, vehicle.heading]);
+
+  return (
+    <Marker
+      coordinate={displayCoordinate}
+      title={`🚌 Route ${route?.route_short_name || 'Bus'}`}
+      description={isFollowed ? 'Following - Tap to unlock' : 'Tap to follow'}
+      pinColor={isFollowed ? "#3B82F6" : "#22C55E"} // Blue when followed, green otherwise
+      rotation={displayRotation}
+      onPress={(e) => {
+        e.stopPropagation(); // Prevent map onPress from firing
+        if (onPress) {
+          onPress();
+        }
+      }}
+      zIndex={isFollowed ? 1000 : 1} // Bring followed vehicle to front
+    >
+      {/* Custom bus icon */}
+      <View style={[styles.vehicleMarker, isFollowed && styles.vehicleMarkerFollowed]}>
+        <Text style={styles.vehicleEmoji}>🚌</Text>
+        {isFollowed && (
+          <View style={styles.followIndicator}>
+            <Text style={styles.followIndicatorText}>📍</Text>
+          </View>
+        )}
+      </View>
+    </Marker>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -383,8 +489,33 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  vehicleMarkerFollowed: {
+    backgroundColor: '#3B82F6',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    elevation: 8,
+  },
   vehicleEmoji: {
     fontSize: 20,
+  },
+  followIndicator: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  followIndicatorText: {
+    fontSize: 12,
   },
 });
 

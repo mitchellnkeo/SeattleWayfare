@@ -48,8 +48,10 @@ export default function RouteMap({ routeId, stops = [], route }) {
   const [vehicles, setVehicles] = useState([]);
   const [showVehicles, setShowVehicles] = useState(true);
   const [followedVehicleId, setFollowedVehicleId] = useState(null);
+  const followedVehicleCache = useRef(null); // Cache followed vehicle to prevent disappearing
   const vehicleUpdateInterval = useRef(null);
   const mapRef = useRef(null);
+  const markerPressHandled = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -106,6 +108,14 @@ export default function RouteMap({ routeId, stops = [], route }) {
         const routeVehicles = await obaService.getVehiclesForRoute(obaRouteId, stops, {
           priorityVehicleId, // Pass followed vehicle for prioritized updates
         });
+        
+        // If we're following a vehicle, cache it to prevent disappearing during re-renders
+        if (priorityVehicleId && routeVehicles) {
+          const followedVehicle = routeVehicles.find(v => v.vehicleId === priorityVehicleId);
+          if (followedVehicle) {
+            followedVehicleCache.current = followedVehicle;
+          }
+        }
         
         setVehicles(routeVehicles || []);
         
@@ -289,11 +299,21 @@ export default function RouteMap({ routeId, stops = [], route }) {
           onError={(error) => {
             console.error('❌ Route map error:', error);
           }}
-          onPress={() => {
-            // Tap outside vehicle - unlock following
-            if (followedVehicleId) {
-              setFollowedVehicleId(null);
+          onPress={(e) => {
+            // Only handle map press if marker press wasn't just handled
+            // This prevents clearing followedVehicleId when tapping on a marker
+            if (markerPressHandled.current) {
+              return;
             }
+            
+            // Use a longer delay to ensure marker press completes first
+            // This is necessary because react-native-maps events can fire in unexpected order
+            setTimeout(() => {
+              // Only clear if marker press wasn't handled in the meantime
+              if (followedVehicleId && !markerPressHandled.current) {
+                setFollowedVehicleId(null);
+              }
+            }, 150);
           }}
         >
         {/* Route polyline */}
@@ -327,31 +347,49 @@ export default function RouteMap({ routeId, stops = [], route }) {
           })}
 
         {/* Live vehicle markers with animation */}
-        {mapInitialized && showVehicles && vehicles.length > 0 &&
-          vehicles.map((vehicle) => {
-            if (!vehicle.latitude || !vehicle.longitude) {
+        {mapInitialized && showVehicles && (() => {
+          // Combine current vehicles with cached followed vehicle to prevent disappearing
+          const vehiclesToRender = [...(vehicles || [])];
+          
+          // If we're following a vehicle and it's not in the current list, add cached version
+          if (followedVehicleId && followedVehicleCache.current) {
+            const hasFollowedVehicle = vehiclesToRender.some(v => v.vehicleId === followedVehicleId);
+            if (!hasFollowedVehicle) {
+              vehiclesToRender.push(followedVehicleCache.current);
+            }
+          }
+          
+          return vehiclesToRender.map((vehicle) => {
+            if (!vehicle || !vehicle.latitude || !vehicle.longitude) {
               return null;
             }
 
             const isFollowed = followedVehicleId === vehicle.vehicleId;
+            const vehicleKey = vehicle.vehicleId || `vehicle-${vehicle.tripId}`;
 
             return (
               <AnimatedVehicleMarker
-                key={vehicle.vehicleId || `vehicle-${vehicle.tripId}`}
+                key={vehicleKey}
                 vehicle={vehicle}
                 route={route}
                 isFollowed={isFollowed}
+                markerPressHandled={markerPressHandled}
                 onPress={() => {
                   // Toggle follow state
+                  // The marker's onPress will handle the markerPressHandled flag
                   if (isFollowed) {
                     setFollowedVehicleId(null);
+                    followedVehicleCache.current = null; // Clear cache when unfollowing
                   } else {
+                    // Set the followed vehicle ID
                     setFollowedVehicleId(vehicle.vehicleId);
+                    followedVehicleCache.current = vehicle; // Cache the vehicle
                   }
                 }}
               />
             );
-          })}
+          });
+        })()}
       </MapView>
     );
   } catch (error) {
@@ -368,7 +406,12 @@ export default function RouteMap({ routeId, stops = [], route }) {
  * Animated vehicle marker component for smooth movement
  * Uses interpolation to smoothly transition between position updates
  */
-function AnimatedVehicleMarker({ vehicle, route, isFollowed = false, onPress }) {
+function AnimatedVehicleMarker({ vehicle, route, isFollowed = false, onPress, markerPressHandled }) {
+  // Guard against missing vehicle data
+  if (!vehicle || !vehicle.latitude || !vehicle.longitude) {
+    return null;
+  }
+
   const [displayCoordinate, setDisplayCoordinate] = useState({
     latitude: vehicle.latitude,
     longitude: vehicle.longitude,
@@ -446,11 +489,27 @@ function AnimatedVehicleMarker({ vehicle, route, isFollowed = false, onPress }) 
       pinColor={isFollowed ? "#3B82F6" : "#22C55E"} // Blue when followed, green otherwise
       rotation={displayRotation}
       onPress={(e) => {
-        e.stopPropagation(); // Prevent map onPress from firing
+        // Mark that we're handling a marker press BEFORE calling the handler
+        // This prevents the map's onPress from clearing followedVehicleId
+        if (markerPressHandled && markerPressHandled.current !== undefined) {
+          markerPressHandled.current = true;
+        }
+        
+        // Call the onPress handler
         if (onPress) {
           onPress();
         }
+        
+        // Reset flag after handler completes
+        // Use a longer delay to ensure map onPress doesn't interfere
+        if (markerPressHandled && markerPressHandled.current !== undefined) {
+          setTimeout(() => {
+            markerPressHandled.current = false;
+          }, 300);
+        }
       }}
+      tracksViewChanges={false} // Prevent unnecessary re-renders that might cause marker to disappear
+      anchor={{ x: 0.5, y: 0.5 }} // Center the marker for better tap accuracy
       zIndex={isFollowed ? 1000 : 1} // Bring followed vehicle to front
     >
       {/* Custom bus icon */}

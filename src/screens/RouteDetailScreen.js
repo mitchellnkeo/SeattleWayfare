@@ -23,6 +23,7 @@ import metroService from '../services/gtfs/metroService';
 import obaService from '../services/onebusaway/obaService';
 import reliabilityService from '../services/reliability/reliabilityService';
 import stService from '../services/soundtransit/stService';
+import fareService from '../services/fare/fareService';
 
 export default function RouteDetailScreen({ route, navigation }) {
   const routeId = route?.params?.routeId;
@@ -200,6 +201,23 @@ export default function RouteDetailScreen({ route, navigation }) {
             <Text style={styles.routeName} numberOfLines={2}>
               {routeData.route_long_name}
             </Text>
+            {/* Fare Information */}
+            {(() => {
+              const fare = fareService.getFare(
+                routeData.route_id,
+                routeData.route_short_name,
+                routeData.route_type
+              );
+              return (
+                <View style={styles.fareContainer}>
+                  <Ionicons name="cash-outline" size={16} color="#3B82F6" />
+                  <Text style={styles.fareText}>{fare.displayText}</Text>
+                  {fare.fareType === 'adult' && (
+                    <Text style={styles.fareNote}>Adult fare</Text>
+                  )}
+                </View>
+              );
+            })()}
           </View>
         </View>
 

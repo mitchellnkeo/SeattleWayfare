@@ -413,13 +413,28 @@ class OneBusAwayService {
       );
 
       if (!data.data || !data.data.entry) {
-        throw new Error('Invalid trip details response');
+        // Don't throw for rate limits or missing data - return null instead
+        if (data.code === 429 || (data.data && data.data.code === 429)) {
+          console.debug('Rate limit for trip details - skipping');
+          return null;
+        }
+        // For other invalid responses, return null instead of throwing
+        // This prevents cascading errors
+        console.debug('Invalid trip details response - missing entry data');
+        return null;
       }
 
       return data.data.entry;
     } catch (error) {
-      console.error('Error fetching trip details:', error);
-      throw error;
+      // Don't log errors for rate limits or expected failures
+      // Only log unexpected errors at debug level
+      if (error.message && !error.message.includes('429') && !error.message.includes('Rate limit')) {
+        if (__DEV__) {
+          console.debug('Error fetching trip details:', error.message);
+        }
+      }
+      // Return null instead of throwing to prevent cascading errors
+      return null;
     }
   }
 
@@ -431,6 +446,11 @@ class OneBusAwayService {
   async getVehicleForTrip(tripId) {
     try {
       const tripDetails = await this.getTripDetails(tripId);
+      
+      // If trip details returned null (rate limit, etc.), return null
+      if (!tripDetails) {
+        return null;
+      }
       
       // Extract vehicle position from trip status
       if (tripDetails.status && tripDetails.status.position) {
@@ -456,7 +476,12 @@ class OneBusAwayService {
       
       return null;
     } catch (error) {
-      console.error('Error fetching vehicle for trip:', error);
+      // Don't log errors - they're expected (rate limits, network issues, etc.)
+      // getTripDetails already handles error logging at appropriate levels
+      // Only log unexpected errors at debug level
+      if (__DEV__ && error.message && !error.message.includes('429') && !error.message.includes('Rate limit')) {
+        console.debug('Error fetching vehicle for trip:', error.message);
+      }
       return null;
     }
   }
@@ -548,9 +573,11 @@ class OneBusAwayService {
                 }
               }
               // Fallback: If vehiclePosition not in arrival, try trip details (rare case)
-              // Only do this for priority vehicle or if we don't have this vehicle yet
-              else if (arrival.tripId && (isPriorityVehicle || !vehicles.has(vehicleId))) {
-                // Only fetch trip details if priority vehicle or missing vehicle
+              // ONLY fetch trip details for priority vehicles (followed vehicles) to avoid rate limits
+              // For other vehicles, skip if no position data - they'll appear in next update
+              else if (arrival.tripId && isPriorityVehicle && !vehicles.has(vehicleId)) {
+                // Only fetch trip details for priority vehicles (followed vehicles)
+                // This is a last resort to get position for a vehicle the user is actively tracking
                 try {
                   const tripVehicle = await this.getVehicleForTrip(arrival.tripId);
                   if (tripVehicle && tripVehicle.latitude && tripVehicle.longitude) {
@@ -567,10 +594,16 @@ class OneBusAwayService {
                     });
                   }
                 } catch (tripError) {
-                  // Silently skip if trip details fail - we'll try again next update
-                  console.debug(`Trip details not available for ${arrival.tripId}`);
+                  // Silently skip if trip details fail (rate limit, network error, etc.)
+                  // This is expected - we'll use cached data or try again later
+                  // Only log at debug level to avoid noise
+                  if (__DEV__) {
+                    console.debug(`Trip details not available for priority vehicle ${arrival.tripId}:`, tripError.message);
+                  }
                 }
               }
+              // For non-priority vehicles without position, skip them (they'll appear in next update with position)
+              // This prevents unnecessary API calls that cause rate limits
             }
           }
         } catch (error) {

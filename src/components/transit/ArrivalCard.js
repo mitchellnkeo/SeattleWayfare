@@ -6,9 +6,12 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { format, formatDistanceToNow } from 'date-fns';
 import ReliabilityBadge from './ReliabilityBadge';
 import DelayPredictionBadge from './DelayPredictionBadge';
+import fareService from '../../services/fare/fareService';
+import fareService from '../../services/fare/fareService';
 
 /**
  * ArrivalCard - Shows arrival prediction with route info and reliability
@@ -22,6 +25,7 @@ export default function ArrivalCard({ arrival, onPress }) {
 
   const {
     routeShortName,
+    routeId,
     tripHeadsign,
     scheduledArrivalTime,
     predictedArrivalTime,
@@ -101,12 +105,23 @@ export default function ArrivalCard({ arrival, onPress }) {
           </Text>
         )}
         {/* Delay Prediction - Unique feature */}
-        {arrival.routeId && (
+        {routeId && (
           <DelayPredictionBadge
-            routeId={arrival.routeId}
+            routeId={routeId}
             arrival={arrival}
           />
         )}
+        
+        {/* Fare Information */}
+        {routeId && routeShortName && (() => {
+          const fare = fareService.getFare(routeId, routeShortName);
+          return (
+            <View style={styles.fareContainer}>
+              <Ionicons name="cash-outline" size={14} color="#6B7280" />
+              <Text style={styles.fareText}>{fare.displayText}</Text>
+            </View>
+          );
+        })()}
       </View>
     </View>
   );
@@ -208,6 +223,22 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 12,
     color: '#6B7280',
+  },
+  fareContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  fareText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#374151',
+    marginLeft: 4,
   },
 });
 

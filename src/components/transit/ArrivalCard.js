@@ -11,7 +11,6 @@ import { format, formatDistanceToNow } from 'date-fns';
 import ReliabilityBadge from './ReliabilityBadge';
 import DelayPredictionBadge from './DelayPredictionBadge';
 import fareService from '../../services/fare/fareService';
-import fareService from '../../services/fare/fareService';
 
 /**
  * ArrivalCard - Shows arrival prediction with route info and reliability

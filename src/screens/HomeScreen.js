@@ -25,6 +25,7 @@ import obaService from '../services/onebusaway/obaService';
 import reliabilityService from '../services/reliability/reliabilityService';
 import { getSavedCommutes } from '../utils/storage';
 import CommuteCard from '../components/commute/CommuteCard';
+import { obaToGtfsRouteId } from '../utils/idMapping';
 
 export default function HomeScreen({ navigation }) {
   const [userLocation, setUserLocation] = useState(null);
@@ -312,18 +313,23 @@ export default function HomeScreen({ navigation }) {
                 Tap any route for details
               </Text>
             </View>
-            {arrivals.map((arrival, index) => (
-              <ArrivalCard
-                key={`${arrival.tripId}-${arrival.scheduledArrivalTime}-${index}`}
-                arrival={arrival}
-                onPress={() => {
-                  navigation.navigate('RouteDetail', {
-                    routeId: arrival.routeId,
-                    routeShortName: arrival.routeShortName,
-                  });
-                }}
-              />
-            ))}
+            {arrivals.map((arrival, index) => {
+              // Convert OBA route ID to GTFS format for navigation
+              const gtfsRouteId = obaToGtfsRouteId(arrival.routeId);
+              
+              return (
+                <ArrivalCard
+                  key={`${arrival.tripId}-${arrival.scheduledArrivalTime}-${index}`}
+                  arrival={arrival}
+                  onPress={() => {
+                    navigation.navigate('RouteDetail', {
+                      routeId: gtfsRouteId,
+                      routeShortName: arrival.routeShortName,
+                    });
+                  }}
+                />
+              );
+            })}
           </View>
         ) : (
           <View style={styles.noArrivals}>

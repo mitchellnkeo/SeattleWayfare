@@ -25,6 +25,7 @@ import stService from '../services/soundtransit/stService';
 import ArrivalCard from '../components/transit/ArrivalCard';
 import RouteHealthDashboard from '../components/transit/RouteHealthDashboard';
 import ReliabilityBadge from '../components/transit/ReliabilityBadge';
+import { obaToGtfsRouteId } from '../utils/idMapping';
 
 export default function TransitInfoScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -223,16 +224,21 @@ export default function TransitInfoScreen({ navigation }) {
 
         <RouteHealthDashboard arrivals={stopArrivals} />
 
-        {stopArrivals.map((arrival, index) => (
-          <ArrivalCard
-            key={`${arrival.tripId}-${arrival.scheduledArrivalTime}-${index}`}
-            arrival={arrival}
-            onPress={() => navigation.navigate('RouteDetail', {
-              routeId: arrival.routeId,
-              routeShortName: arrival.routeShortName,
-            })}
-          />
-        ))}
+        {stopArrivals.map((arrival, index) => {
+          // Convert OBA route ID to GTFS format for navigation
+          const gtfsRouteId = obaToGtfsRouteId(arrival.routeId);
+          
+          return (
+            <ArrivalCard
+              key={`${arrival.tripId}-${arrival.scheduledArrivalTime}-${index}`}
+              arrival={arrival}
+              onPress={() => navigation.navigate('RouteDetail', {
+                routeId: gtfsRouteId,
+                routeShortName: arrival.routeShortName,
+              })}
+            />
+          );
+        })}
       </ScrollView>
     );
   };

@@ -486,16 +486,10 @@ class OneBusAwayService {
     }
   }
 
+  // NOTE: getVehiclesForRoute has been removed - will be reimplemented step by step
+  // The entire method has been removed to start fresh with a more meticulous approach
+
   /**
-   * Get all vehicles (buses) currently running on a route with REAL-TIME positions
-   * Uses arrivals data to extract actual vehicle positions from OneBusAway API
-   * @param {string} routeId - Route ID in OneBusAway format (e.g., "1_100275")
-   * @param {Array} stops - Array of stop IDs to check for vehicles
-   * @returns {Promise<Array>} Array of vehicle position objects with real GPS coordinates
-   */
-  async getVehiclesForRoute(routeId, stops = [], options = {}) {
-    try {
-      // OPTIMIZATION: Use vehiclePosition from arrivals response instead of separate trip detail calls
       // This reduces API calls from ~15 per update to ~3-5 per update (67-80% reduction!)
       const vehicles = new Map(); // Use Map to deduplicate by vehicleId
 
@@ -534,9 +528,19 @@ class OneBusAwayService {
           
           const arrivals = await this.getArrivalsForStop(obaStopId, {
             minutesAfter: 30,
-            useCache: true,
+            useCache: false, // Bypass cache for vehicle tracking to get fresh positions
             cacheTTL, // Dynamic cache TTL based on priority
           });
+
+          // Log arrivals for debugging
+          if (__DEV__) {
+            console.log(`   📊 Stop ${obaStopId}: Found ${arrivals.length} arrivals`);
+            const routeArrivals = arrivals.filter(a => a.routeId === routeId);
+            console.log(`   📊 Route ${routeId}: ${routeArrivals.length} arrivals`);
+            routeArrivals.forEach((a, idx) => {
+              console.log(`   📊 Arrival ${idx + 1}: vehicleId=${a.vehicleId}, hasVehiclePosition=${!!a.vehiclePosition}, vehiclePosition=${JSON.stringify(a.vehiclePosition)}`);
+            });
+          }
 
           // Extract vehicle positions directly from arrivals (no trip detail calls needed!)
           for (const arrival of arrivals) {
@@ -571,11 +575,71 @@ class OneBusAwayService {
                     isPriority: isPriorityVehicle, // Mark priority vehicle
                   });
                 }
+              } 
+              // Fallback: If vehiclePosition needs trip details, fetch it
+              // Fetch trip details for vehicles that need it (but limit to avoid rate limits)
+              else if (arrival.vehiclePosition && arrival.vehiclePosition.needsTripDetails && arrival.tripId) {
+                // Only fetch trip details if:
+                // 1. It's a priority vehicle (always fetch)
+                // 2. OR we haven't fetched too many trip details yet (limit to 3 per route to avoid rate limits)
+                const vehiclesNeedingTripDetails = Array.from(vehicles.values()).filter(v => v.needsTripDetails).length;
+                const shouldFetchTripDetails = isPriorityVehicle || vehiclesNeedingTripDetails < 3;
+                
+                if (shouldFetchTripDetails && !vehicles.has(vehicleId)) {
+                  // Mark that we're fetching this vehicle
+                  vehicles.set(vehicleId, {
+                    vehicleId: vehicleId,
+                    tripId: arrival.tripId,
+                    routeId: arrival.routeId,
+                    needsTripDetails: true, // Mark as needing trip details
+                    isPriority: isPriorityVehicle,
+                  });
+                  
+                  // Fetch trip details asynchronously (don't await - we'll update when it completes)
+                  this.getVehicleForTrip(arrival.tripId)
+                    .then(tripVehicle => {
+                      if (tripVehicle && tripVehicle.latitude && tripVehicle.longitude) {
+                        // Update the vehicle with position data
+                        vehicles.set(vehicleId, {
+                          vehicleId: vehicleId,
+                          tripId: arrival.tripId,
+                          routeId: arrival.routeId,
+                          latitude: tripVehicle.latitude,
+                          longitude: tripVehicle.longitude,
+                          heading: tripVehicle.heading || 0,
+                          lastUpdateTime: tripVehicle.lastUpdateTime || Date.now(),
+                          distanceFromStop: arrival.distanceFromStop,
+                          isPriority: isPriorityVehicle,
+                        });
+                        if (__DEV__) {
+                          console.log(`   ✅ Got vehicle position from trip details for ${vehicleId}`);
+                        }
+                      }
+                    })
+                    .catch(error => {
+                      if (__DEV__) {
+                        console.log(`   ⚠️ Failed to get trip details for ${vehicleId}:`, error.message);
+                      }
+                      // Remove the placeholder if fetch failed
+                      vehicles.delete(vehicleId);
+                    });
+                } else if (__DEV__) {
+                  console.log(`   ⏭️ Skipping trip details fetch for ${vehicleId} (limit reached or not priority)`);
+                }
+              } else {
+                // Log when vehicle position is missing
+                if (__DEV__) {
+                  console.log(`   ⚠️ Arrival for route ${routeId} has vehicleId ${vehicleId} but no vehiclePosition:`, {
+                    hasVehiclePosition: !!arrival.vehiclePosition,
+                    vehiclePosition: arrival.vehiclePosition,
+                    arrivalKeys: Object.keys(arrival),
+                  });
+                }
               }
-              // Fallback: If vehiclePosition not in arrival, try trip details (rare case)
+              // Legacy fallback: If vehiclePosition not in arrival, try trip details (rare case)
               // ONLY fetch trip details for priority vehicles (followed vehicles) to avoid rate limits
               // For other vehicles, skip if no position data - they'll appear in next update
-              else if (arrival.tripId && isPriorityVehicle && !vehicles.has(vehicleId)) {
+              if (!arrival.vehiclePosition && arrival.tripId && isPriorityVehicle && !vehicles.has(vehicleId)) {
                 // Only fetch trip details for priority vehicles (followed vehicles)
                 // This is a last resort to get position for a vehicle the user is actively tracking
                 try {
@@ -612,7 +676,27 @@ class OneBusAwayService {
         }
       }
 
-      const vehicleArray = Array.from(vehicles.values()).filter(v => v.latitude && v.longitude);
+      // Wait a short time for async trip detail fetches to complete (max 500ms)
+      // This allows us to get vehicle positions that require trip details
+      const vehiclesNeedingTripDetails = Array.from(vehicles.values()).filter(v => v.needsTripDetails);
+      if (vehiclesNeedingTripDetails.length > 0) {
+        // Wait up to 500ms for trip details to be fetched
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Filter out vehicles that don't have position data yet (still fetching trip details)
+      const vehicleArray = Array.from(vehicles.values()).filter(v => 
+        v.latitude && v.longitude && !v.needsTripDetails
+      );
+      
+      if (__DEV__) {
+        const vehiclesWithPositions = vehicleArray.length;
+        const vehiclesPending = Array.from(vehicles.values()).filter(v => v.needsTripDetails).length;
+        if (vehiclesPending > 0) {
+          console.log(`   📍 Returning ${vehiclesWithPositions} vehicles with positions (${vehiclesPending} still fetching trip details)`);
+        }
+      }
+      
       return vehicleArray;
     } catch (error) {
       console.warn('Error fetching vehicles for route:', routeId, error);

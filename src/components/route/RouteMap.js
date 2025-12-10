@@ -4,12 +4,10 @@
  * Based on ROADMAP.md Phase 3.3
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
 import locationService from '../../services/location/locationService';
 import metroService from '../../services/gtfs/metroService';
-import obaService from '../../services/onebusaway/obaService';
-import { gtfsToObaRouteId } from '../../utils/idMapping';
 
 // Lazy load MapView - only on native platforms (not web)
 // On web, Metro will use RouteMap.web.js instead
@@ -45,13 +43,6 @@ export default function RouteMap({ routeId, stops = [], route }) {
   const [mapReady, setMapReady] = useState(false);
   const [mapInitialized, setMapInitialized] = useState(false);
   const [region, setRegion] = useState(null);
-  const [vehicles, setVehicles] = useState([]);
-  const [showVehicles, setShowVehicles] = useState(true);
-  const [followedVehicleId, setFollowedVehicleId] = useState(null);
-  const followedVehicleCache = useRef(null); // Cache followed vehicle to prevent disappearing
-  const vehicleUpdateInterval = useRef(null);
-  const mapRef = useRef(null);
-  const markerPressHandled = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -69,109 +60,6 @@ export default function RouteMap({ routeId, stops = [], route }) {
       calculateRegion();
     }
   }, [stops]);
-
-  // Follow the selected vehicle as it moves
-  useEffect(() => {
-    if (followedVehicleId && mapRef.current && mapInitialized) {
-      const followedVehicle = vehicles.find(v => v.vehicleId === followedVehicleId);
-      if (followedVehicle && followedVehicle.latitude && followedVehicle.longitude) {
-        // Smoothly animate map to follow the vehicle
-        mapRef.current.animateToRegion({
-          latitude: followedVehicle.latitude,
-          longitude: followedVehicle.longitude,
-          latitudeDelta: 0.01, // Zoomed in view
-          longitudeDelta: 0.01,
-        }, 500); // 500ms animation
-      }
-    }
-  }, [followedVehicleId, vehicles, mapInitialized]);
-
-  // Fetch live vehicle positions with smart rate limiting
-  useEffect(() => {
-    if (!routeId || !obaService.isConfigured() || stops.length === 0) {
-      return;
-    }
-
-    let updateInterval = 8000; // Start with 8 seconds (safe default)
-    let consecutiveErrors = 0;
-    let lastVehicleCount = 0;
-
-    const fetchVehicles = async () => {
-      try {
-        // Convert GTFS route ID to OBA format
-        const obaRouteId = gtfsToObaRouteId(routeId);
-        
-        // OPTIMIZATION: If following a vehicle, prioritize it with faster updates
-        const priorityVehicleId = followedVehicleId;
-        
-        // Pass stops and priority vehicle to help find vehicles
-        const routeVehicles = await obaService.getVehiclesForRoute(obaRouteId, stops, {
-          priorityVehicleId, // Pass followed vehicle for prioritized updates
-        });
-        
-        // If we're following a vehicle, cache it to prevent disappearing during re-renders
-        if (priorityVehicleId && routeVehicles) {
-          const followedVehicle = routeVehicles.find(v => v.vehicleId === priorityVehicleId);
-          if (followedVehicle) {
-            followedVehicleCache.current = followedVehicle;
-          }
-        }
-        
-        setVehicles(routeVehicles || []);
-        
-        // Adaptive rate limiting: if we got vehicles successfully, we can speed up
-        const currentVehicleCount = routeVehicles?.length || 0;
-        if (currentVehicleCount > 0) {
-          consecutiveErrors = 0;
-          // If we have vehicles and they're updating, we can be more aggressive
-          if (currentVehicleCount === lastVehicleCount && updateInterval > 5000) {
-            // Vehicles are stable, can speed up slightly
-            updateInterval = Math.max(5000, updateInterval - 500);
-          }
-          lastVehicleCount = currentVehicleCount;
-        }
-      } catch (error) {
-        consecutiveErrors++;
-        console.warn('Error fetching vehicles for route:', error);
-        setVehicles([]);
-        
-        // Adaptive rate limiting: if we hit errors, slow down
-        if (consecutiveErrors >= 2) {
-          updateInterval = Math.min(15000, updateInterval + 2000); // Slow down, max 15s
-        }
-      }
-    };
-
-    // Fetch immediately
-    fetchVehicles();
-
-    // OPTIMIZATION: Dynamic update interval based on whether vehicle is followed
-    // If following a vehicle, update more frequently for smoother tracking
-    const getUpdateInterval = () => {
-      if (followedVehicleId) {
-        return 3000; // 3 seconds when following (smoother animation)
-      }
-      return updateInterval; // Use adaptive interval otherwise
-    };
-
-    const scheduleNextUpdate = () => {
-      const interval = getUpdateInterval();
-      vehicleUpdateInterval.current = setTimeout(() => {
-        fetchVehicles().finally(() => {
-          scheduleNextUpdate(); // Schedule next update
-        });
-      }, interval);
-    };
-
-    // Start the update cycle
-    scheduleNextUpdate();
-
-    return () => {
-      if (vehicleUpdateInterval.current) {
-        clearTimeout(vehicleUpdateInterval.current);
-      }
-    };
-  }, [routeId, stops, followedVehicleId]);
 
   const calculateRegion = () => {
     if (!stops || stops.length === 0) return;
@@ -284,10 +172,8 @@ export default function RouteMap({ routeId, stops = [], route }) {
     try {
       return (
         <MapView
-          ref={mapRef}
           style={styles.map}
           initialRegion={region}
-          region={followedVehicleId ? undefined : region} // Let region control when not following
           showsUserLocation={false}
           showsMyLocationButton={false}
           mapType="standard"
@@ -298,22 +184,6 @@ export default function RouteMap({ routeId, stops = [], route }) {
           }}
           onError={(error) => {
             console.error('❌ Route map error:', error);
-          }}
-          onPress={(e) => {
-            // Only handle map press if marker press wasn't just handled
-            // This prevents clearing followedVehicleId when tapping on a marker
-            if (markerPressHandled.current) {
-              return;
-            }
-            
-            // Use a longer delay to ensure marker press completes first
-            // This is necessary because react-native-maps events can fire in unexpected order
-            setTimeout(() => {
-              // Only clear if marker press wasn't handled in the meantime
-              if (followedVehicleId && !markerPressHandled.current) {
-                setFollowedVehicleId(null);
-              }
-            }, 150);
           }}
         >
         {/* Route polyline */}
@@ -346,50 +216,6 @@ export default function RouteMap({ routeId, stops = [], route }) {
             );
           })}
 
-        {/* Live vehicle markers with animation */}
-        {mapInitialized && showVehicles && (() => {
-          // Combine current vehicles with cached followed vehicle to prevent disappearing
-          const vehiclesToRender = [...(vehicles || [])];
-          
-          // If we're following a vehicle and it's not in the current list, add cached version
-          if (followedVehicleId && followedVehicleCache.current) {
-            const hasFollowedVehicle = vehiclesToRender.some(v => v.vehicleId === followedVehicleId);
-            if (!hasFollowedVehicle) {
-              vehiclesToRender.push(followedVehicleCache.current);
-            }
-          }
-          
-          return vehiclesToRender.map((vehicle) => {
-            if (!vehicle || !vehicle.latitude || !vehicle.longitude) {
-              return null;
-            }
-
-            const isFollowed = followedVehicleId === vehicle.vehicleId;
-            const vehicleKey = vehicle.vehicleId || `vehicle-${vehicle.tripId}`;
-
-            return (
-              <AnimatedVehicleMarker
-                key={vehicleKey}
-                vehicle={vehicle}
-                route={route}
-                isFollowed={isFollowed}
-                markerPressHandled={markerPressHandled}
-                onPress={() => {
-                  // Toggle follow state
-                  // The marker's onPress will handle the markerPressHandled flag
-                  if (isFollowed) {
-                    setFollowedVehicleId(null);
-                    followedVehicleCache.current = null; // Clear cache when unfollowing
-                  } else {
-                    // Set the followed vehicle ID
-                    setFollowedVehicleId(vehicle.vehicleId);
-                    followedVehicleCache.current = vehicle; // Cache the vehicle
-                  }
-                }}
-              />
-            );
-          });
-        })()}
       </MapView>
     );
   } catch (error) {
@@ -579,49 +405,6 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 8,
     paddingLeft: 8,
-  },
-  vehicleMarker: {
-    backgroundColor: '#22C55E',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  vehicleMarkerFollowed: {
-    backgroundColor: '#3B82F6',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
-    elevation: 8,
-  },
-  vehicleEmoji: {
-    fontSize: 20,
-  },
-  followIndicator: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: '#3B82F6',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  followIndicatorText: {
-    fontSize: 12,
   },
 });
 
